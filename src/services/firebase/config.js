@@ -1,51 +1,19 @@
-// C:\Users\akotb\Desktop\backup taskG\src\firebase\config.js
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, browserSessionPersistence, setPersistence } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+// SOSTITUISCI TUTTO con questo (hard-coded per test)
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL
+  apiKey: "AIzaSyDpZfX3g9HxtRaHG0nrmgdQnNA4ijevLXE",
+  authDomain: "taskgariboldi.firebaseapp.com",
+  projectId: "taskgariboldi",
+  storageBucket: "taskgariboldi.firebasestorage.app",
+  messagingSenderId: "181239259608",
+  appId: "1:181239259608:web:5a24dcb4073df79a4952ad",
+  measurementId: "G-XPJV5L47CJ",
+  databaseURL: "https://taskgariboldi-default-rtdb.firebaseio.com"
 };
 
-let app;
-const existingApps = getApps();
-
-console.log('📊 [Firebase Config] App esistenti:', existingApps.length);
-
-if (existingApps.length === 0) {
-  app = initializeApp(firebaseConfig);
-  console.log("🔥 [Firebase Config] Firebase inizializzato (prima volta)");
-} else {
-  app = existingApps[0];
-  console.log("🔥 [Firebase Config] Firebase già esistente, uso app esistente");
-}
-
-const auth = getAuth(app);
-
-setPersistence(auth, browserSessionPersistence)
-  .then(() => {
-    console.log("✅ [Firebase Config] Session persistence attivata (isolamento tab)");
-  })
-  .catch((error) => {
-    console.error("❌ [Firebase Config] Errore setting persistence:", error);
-  });
-
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-console.log('✅ [Firebase Config] Servizi inizializzati:', {
-  auth: !!auth,
-  db: !!db,
-  storage: !!storage
-});
-
-export { app, auth, db, storage };
-export default app;
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
