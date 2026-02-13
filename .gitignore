@@ -1,0 +1,106 @@
+# ============================================
+# DEPENDENCIES
+# ============================================
+node_modules/
+.npm
+.pnpm
+.yarn/
+bower_components
+jspm_packages/
+
+# ============================================
+# BUILD & DISTRIBUTION
+# ============================================
+dist/
+dist-ssr/
+*.local
+.cache/
+.temp/
+
+# ============================================
+# ENVIRONMENT VARIABLES
+# ============================================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ============================================
+# FIREBASE
+# ============================================
+.firebase/
+.firebaserc
+firebase-debug.log
+firebase-debug.*.log
+
+# ============================================
+# EDITOR & IDE
+# ============================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================
+# LOGS
+# ============================================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================
+# TESTING
+# ============================================
+coverage/
+.nyc_output/
+
+# ============================================
+# SYSTEM
+# ============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+[Tt]humbs.db
+
+# ============================================
+# OPERATING SYSTEM FILES
+# ============================================
+# Windows
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+*.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+__MACOSX/
+
+# Linux
+*~
+
+# ============================================
+# PROJECT SPECIFIC
+# ============================================
+/lib/
+!/lib/scripts/
+
+# ============================================
+# SECURITY
+# ============================================
+secrets.json
+service-account-key.json
+*.pem
+*.key
+*.crt

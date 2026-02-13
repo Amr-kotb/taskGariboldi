@@ -1,0 +1,117 @@
+    /* C:\Users\akotb\Desktop\backup taskG\src\components\DriveFileUploader.css */
+.drive-uploader {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e9edf5 100%);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 30px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  border: 1px solid #dadce0;
+}
+
+.uploader-header h3 {
+  margin: 0 0 20px 0;
+  color: #1a73e8;
+  font-size: 1.2rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.uploader-header h3:before {
+  content: '☁️';
+  font-size: 1.4rem;
+}
+
+.uploader-controls {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.category-select {
+  padding: 12px 16px;
+  border: 2px solid #dadce0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #3c4043;
+  background-color: white;
+  cursor: pointer;
+  min-width: 200px;
+  transition: all 0.3s ease;
+}
+
+.category-select:hover {
+  border-color: #1a73e8;
+}
+
+.category-select:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26,115,232,0.2);
+}
+
+.drive-upload-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background-color: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(26,115,232,0.3);
+}
+
+.drive-upload-btn:hover:not(:disabled) {
+  background-color: #1557b0;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(26,115,232,0.4);
+}
+
+.drive-upload-btn:disabled {
+  background-color: #9aa0a6;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.drive-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.loading-spinner {
+  font-size: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.uploader-note {
+  margin: 16px 0 0 0;
+  color: #5f6368;
+  font-size: 13px;
+  padding-top: 16px;
+  border-top: 1px dashed #dadce0;
+}
+
+@media (max-width: 768px) {
+  .uploader-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .category-select,
+  .drive-upload-btn {
+    width: 100%;
+  }
+}
