@@ -11,7 +11,7 @@ const AdminAssignTask = () => {
   const navigate = useNavigate();
   const { user: currentUser, loading: authLoading } = useAuth();
   const { users, loadEmployees, loading: usersLoading, error: usersError } = useUsers();
-  const { createTask, storageAvailable, checkStorageAvailability } = useTasks(); 
+  const { createTask } = useTasks(); 
   
   const [formData, setFormData] = useState({
     title: '',
@@ -22,18 +22,15 @@ const AdminAssignTask = () => {
     category: 'dipendente'
   });
 
-  // File da upload locale
-  const [attachments, setAttachments] = useState([]);
-  
   // File da Google Drive
   const [driveFiles, setDriveFiles] = useState([]);
   const [driveLoading, setDriveLoading] = useState(false);
+  const [driveError, setDriveError] = useState('');
 
   const [errors, setErrors] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localLoading, setLocalLoading] = useState(false);
-  const [showStorageWarning, setShowStorageWarning] = useState(false);
 
   // Controlla autenticazione e carica dipendenti
   useEffect(() => {
@@ -56,10 +53,7 @@ const AdminAssignTask = () => {
         .finally(() => setLocalLoading(false));
     }
     
-    const isStorageAvailable = checkStorageAvailability ? checkStorageAvailability() : false;
-    setShowStorageWarning(!isStorageAvailable);
-    
-  }, [authLoading, currentUser, navigate, loadEmployees, checkStorageAvailability]);
+  }, [authLoading, currentUser, navigate, loadEmployees]);
 
   const priorities = [
     { value: 'bassa', label: '🟢 Bassa' },
@@ -84,7 +78,7 @@ const AdminAssignTask = () => {
   const handleSelectFromDrive = async () => {
     try {
       setDriveLoading(true);
-      setErrors({});
+      setDriveError('');
       
       // Verifica login Google Drive
       if (!localStorage.getItem('googleAccessToken')) {
@@ -96,15 +90,14 @@ const AdminAssignTask = () => {
         try {
           // Verifica duplicati
           if (driveFiles.some(f => f.id === selectedFile.id)) {
-            setErrors({ drive: 'File già selezionato' });
+            setDriveError('File già selezionato');
             setDriveLoading(false);
             return;
           }
 
-          // Limite di 5 file totali
-          const totalFiles = attachments.length + driveFiles.length;
-          if (totalFiles >= 5) {
-            setErrors({ drive: 'Limite massimo di 5 file raggiunto' });
+          // Limite di 5 file
+          if (driveFiles.length >= 5) {
+            setDriveError('Limite massimo di 5 file raggiunto');
             setDriveLoading(false);
             return;
           }
@@ -117,98 +110,27 @@ const AdminAssignTask = () => {
             mimeType: selectedFile.mimeType,
             size: selectedFile.size || 0,
             iconUrl: selectedFile.iconUrl,
-            driveFile: true,
             selectedAt: new Date().toISOString()
           }]);
 
           setDriveLoading(false);
         } catch (error) {
           console.error('❌ Errore selezione file Drive:', error);
-          setErrors({ drive: 'Errore durante la selezione del file da Drive' });
+          setDriveError('Errore durante la selezione del file da Drive');
           setDriveLoading(false);
         }
       });
     } catch (error) {
       console.error('❌ Errore accesso Google Drive:', error);
-      setErrors({ drive: 'Errore durante l\'accesso a Google Drive' });
+      setDriveError('Errore durante l\'accesso a Google Drive');
       setDriveLoading(false);
     }
   };
 
-  // ============================================
-  // FIREBASE STORAGE - UPLOAD FILE LOCALE
-  // ============================================
-  const handleFileChange = (e) => {
-    const files = Array.from(e.target.files);
-    
-    // Validazioni file
-    const validFiles = files.filter(file => {
-      // Controlla dimensione (10MB max)
-      if (file.size > 10 * 1024 * 1024) {
-        console.warn(`⚠️ File ${file.name} troppo grande (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-        return false;
-      }
-      
-      // Tipi file consentiti
-      const allowedTypes = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'text/plain',
-        'application/zip',
-        'application/x-rar-compressed',
-        'application/x-7z-compressed'
-      ];
-      
-      if (!allowedTypes.includes(file.type)) {
-        console.warn(`⚠️ Tipo file non supportato: ${file.type}`);
-        return false;
-      }
-      
-      return true;
-    });
-    
-    // Limita a 5 file totali
-    const currentCount = attachments.length + driveFiles.length;
-    const remainingSlots = 5 - currentCount;
-    const filesToAdd = validFiles.slice(0, remainingSlots);
-    
-    if (filesToAdd.length < validFiles.length) {
-      setErrors({ files: `Limite di 5 file raggiunto, ${validFiles.length - filesToAdd.length} file ignorati` });
-    }
-    
-    setAttachments(prev => [...prev, ...filesToAdd]);
-    e.target.value = ''; // Reset input
-  };
-
-  // ============================================
-  // RIMOZIONE FILE
-  // ============================================
-  const removeAttachment = (index) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
-  };
-
+  // Rimuovi file da Drive
   const removeDriveFile = (id) => {
     setDriveFiles(prev => prev.filter(f => f.id !== id));
-  };
-
-  // Helper per icone file
-  const getFileIcon = (fileName, isDrive = false) => {
-    if (isDrive) return '☁️';
-    
-    const ext = fileName?.split('.').pop().toLowerCase();
-    if (['pdf'].includes(ext)) return '📄';
-    if (['doc', 'docx'].includes(ext)) return '📝';
-    if (['xls', 'xlsx'].includes(ext)) return '📊';
-    if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext)) return '🖼️';
-    if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return '🗜️';
-    if (['mp3', 'wav', 'ogg'].includes(ext)) return '🎵';
-    if (['mp4', 'avi', 'mov', 'mkv', 'webm'].includes(ext)) return '🎬';
-    if (['txt', 'md', 'json', 'js', 'jsx', 'ts', 'tsx', 'html', 'css'].includes(ext)) return '📃';
-    return '📎';
+    setDriveError('');
   };
 
   // Validazione form
@@ -252,25 +174,7 @@ const AdminAssignTask = () => {
       const assignedUser = users?.find(u => u.id === formData.assignedTo) || 
         { name: 'Sconosciuto', email: '' };
       
-      // 1. Upload file da Firebase Storage
-      const storageAttachments = [];
-      
-      if (attachments.length > 0 && storageAvailable) {
-        // Qui dovresti implementare l'upload effettivo su Firebase Storage
-        // Per ora simuliamo
-        for (const file of attachments) {
-          storageAttachments.push({
-            name: file.name,
-            url: URL.createObjectURL(file), // Temporaneo
-            type: file.type,
-            size: file.size,
-            uploadedAt: new Date().toISOString(),
-            source: 'firebase_storage'
-          });
-        }
-      }
-
-      // 2. Prepara allegati da Google Drive
+      // Prepara allegati da Google Drive
       const driveAttachments = driveFiles.map(file => ({
         name: file.name,
         url: file.url,
@@ -283,9 +187,6 @@ const AdminAssignTask = () => {
         downloadUrl: googleDriveService.getDownloadUrl(file.id)
       }));
 
-      // 3. Combina tutti gli allegati
-      const allAttachments = [...storageAttachments, ...driveAttachments];
-      
       const taskData = {
         title: formData.title.trim(),
         description: formData.description.trim(),
@@ -301,27 +202,19 @@ const AdminAssignTask = () => {
         dueDate: formData.dueDate || null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        attachments: allAttachments,
-        hasDriveAttachments: driveAttachments.length > 0,
-        hasStorageAttachments: storageAttachments.length > 0
+        attachments: driveAttachments,
+        hasDriveAttachments: driveAttachments.length > 0
       };
       
-      console.log('📝 Invio task con', allAttachments.length, 'allegati');
+      console.log('📝 Invio task con', driveAttachments.length, 'allegati da Drive');
       
-      const result = await createTask(taskData, []); // Passiamo solo taskData, gli allegati sono già dentro
+      const result = await createTask(taskData);
       
       if (result?.success) {
         let message = '✅ Task assegnato con successo!';
         
-        const driveCount = driveAttachments.length;
-        const storageCount = storageAttachments.length;
-        
-        if (driveCount > 0 && storageCount > 0) {
-          message += ` (${driveCount} da Drive, ${storageCount} allegati)`;
-        } else if (driveCount > 0) {
-          message += ` (${driveCount} file da Google Drive)`;
-        } else if (storageCount > 0) {
-          message += ` (${storageCount} file allegati)`;
+        if (driveAttachments.length > 0) {
+          message += ` (${driveAttachments.length} file da Google Drive)`;
         }
         
         setSuccessMessage(message);
@@ -335,7 +228,6 @@ const AdminAssignTask = () => {
           dueDate: '',
           category: 'dipendente'
         });
-        setAttachments([]);
         setDriveFiles([]);
         
         // Naviga dopo 2 secondi
@@ -361,9 +253,6 @@ const AdminAssignTask = () => {
 
   // Stato loading combinato
   const isLoading = authLoading || localLoading || isSubmitting || driveLoading;
-  
-  // Totale file
-  const totalFiles = attachments.length + driveFiles.length;
 
   // Loading screen per autenticazione
   if (authLoading) {
@@ -407,18 +296,11 @@ const AdminAssignTask = () => {
       </div>
 
       {/* Messaggi di avviso */}
-      {errors.drive && (
+      {driveError && (
         <div className="alert alert-error">
           <span className="alert-icon">⚠️</span>
-          <span>{errors.drive}</span>
-          <button onClick={() => setErrors({})} className="alert-close">×</button>
-        </div>
-      )}
-      
-      {errors.files && (
-        <div className="alert alert-warning">
-          <span className="alert-icon">⚠️</span>
-          <span>{errors.files}</span>
+          <span>{driveError}</span>
+          <button onClick={() => setDriveError('')} className="alert-close">×</button>
         </div>
       )}
       
@@ -477,114 +359,61 @@ const AdminAssignTask = () => {
           </div>
           
           {/* ============================================ */}
-          {/* SEZIONE ALLEGATI - GOOGLE DRIVE + STORAGE */}
+          {/* SEZIONE ALLEGATI - SOLO GOOGLE DRIVE */}
           {/* ============================================ */}
           <div className="form-group">
             <div className="attachments-header">
-              <label className="form-label">Allegati ({totalFiles}/5)</label>
-              
-              <div className="attachments-actions">
-                {/* Pulsante Google Drive */}
-                <button
-                  type="button"
-                  onClick={handleSelectFromDrive}
-                  disabled={driveLoading || totalFiles >= 5 || isLoading}
-                  className="btn-drive"
-                >
-                  {driveLoading ? (
-                    <>
-                      <span className="spinner-small"></span>
-                      Caricamento...
-                    </>
-                  ) : (
-                    <>
-                      <img 
-                        src="https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png" 
-                        alt="Drive"
-                        className="drive-icon-small"
-                      />
-                      Seleziona da Drive
-                    </>
-                  )}
-                </button>
-
-                {/* Upload locale (se disponibile) */}
-                {storageAvailable && (
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('file-upload').click()}
-                    disabled={totalFiles >= 5 || isLoading}
-                    className="btn-upload"
-                  >
-                    📤 Carica file
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="file-upload-area">
-              <input
-                type="file"
-                id="file-upload"
-                multiple
-                onChange={handleFileChange}
-                className="file-input"
-                disabled={isLoading || !storageAvailable || totalFiles >= 5}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.txt,.zip,.rar,.7z"
-              />
-              
-              <label 
-                htmlFor="file-upload" 
-                className={`file-upload-label ${!storageAvailable || totalFiles >= 5 ? 'disabled' : ''}`}
-              >
-                <span className="file-icon">📎</span>
-                <span>
-                  {totalFiles >= 5 
-                    ? 'Limite massimo raggiunto (5 file)' 
-                    : storageAvailable 
-                      ? 'Trascina i file qui o clicca per selezionare' 
-                      : 'Upload locale non disponibile'}
-                </span>
-                <span className="file-hint">
-                  {totalFiles >= 5 
-                    ? 'Rimuovi qualche file per aggiungerne altri'
-                    : storageAvailable 
-                      ? 'Massimo 5 file totali, 10MB ciascuno' 
-                      : 'Usa Google Drive per allegare file'}
-                </span>
+              <label className="form-label">
+                Allegati da Google Drive ({driveFiles.length}/5)
               </label>
               
-              {/* Lista file da Google Drive */}
-              {driveFiles.length > 0 && (
-                <div className="attachments-list drive-list">
-                  <div className="attachments-header">
-                    <h4>
-                      <img 
-                        src="https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png" 
-                        alt="Drive"
-                        className="drive-icon-small"
-                      />
-                      File da Google Drive ({driveFiles.length})
-                    </h4>
-                  </div>
-                  {driveFiles.map((file) => (
-                    <div key={file.id} className="attachment-item drive-item">
-                      <span className="attachment-name">
-                        <span className="attachment-icon">
-                          <img 
-                            src={file.iconUrl || 'https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png'} 
-                            alt=""
-                            style={{ width: '24px', height: '24px' }}
-                          />
-                        </span>
-                        <span className="attachment-text">
-                          <span className="attachment-title">{file.name}</span>
-                          <span className="attachment-meta">
-                            <span className="attachment-size">{formatFileSize(file.size)}</span>
-                            <span className="attachment-source">☁️ Google Drive</span>
-                          </span>
+              {/* Pulsante Google Drive */}
+              <button
+                type="button"
+                onClick={handleSelectFromDrive}
+                disabled={driveLoading || driveFiles.length >= 5 || isLoading}
+                className="btn-drive"
+              >
+                {driveLoading ? (
+                  <>
+                    <span className="spinner-small"></span>
+                    Caricamento...
+                  </>
+                ) : (
+                  <>
+                    <img 
+                      src="https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png" 
+                      alt="Drive"
+                      className="drive-icon-small"
+                    />
+                    Seleziona da Google Drive
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Lista file da Google Drive */}
+            {driveFiles.length > 0 ? (
+              <div className="attachments-list drive-list">
+                {driveFiles.map((file) => (
+                  <div key={file.id} className="attachment-item drive-item">
+                    <span className="attachment-name">
+                      <span className="attachment-icon">
+                        <img 
+                          src={file.iconUrl || 'https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png'} 
+                          alt=""
+                          style={{ width: '24px', height: '24px' }}
+                        />
+                      </span>
+                      <span className="attachment-text">
+                        <span className="attachment-title">{file.name}</span>
+                        <span className="attachment-meta">
+                          <span className="attachment-size">{formatFileSize(file.size)}</span>
+                          <span className="attachment-source">☁️ Google Drive</span>
                         </span>
                       </span>
+                    </span>
+                    <div className="attachment-actions">
                       <a
                         href={file.url}
                         target="_blank"
@@ -604,46 +433,15 @@ const AdminAssignTask = () => {
                         ❌
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Lista file locali */}
-              {attachments.length > 0 && (
-                <div className="attachments-list">
-                  <div className="attachments-header">
-                    <h4>File da dispositivo ({attachments.length})</h4>
-                    {!storageAvailable && (
-                      <span className="storage-warning">⚠️ Verranno ignorati (storage non attivo)</span>
-                    )}
                   </div>
-                  {attachments.map((file, index) => (
-                    <div key={index} className="attachment-item">
-                      <span className="attachment-name">
-                        <span className="attachment-icon">
-                          {getFileIcon(file.name)}
-                        </span>
-                        <span className="attachment-text">
-                          <span className="attachment-title">{file.name}</span>
-                          <span className="attachment-size">
-                            {formatFileSize(file.size)}
-                          </span>
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(index)}
-                        className="remove-attachment"
-                        disabled={isLoading}
-                        title="Rimuovi file"
-                      >
-                        ❌
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="no-attachments-message">
+                <p>Nessun file selezionato da Google Drive</p>
+                <small>Clicca il pulsante sopra per selezionare file dal tuo Drive</small>
+              </div>
+            )}
           </div>
           
           {/* Assegna a & Priorità */}

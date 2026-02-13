@@ -611,41 +611,31 @@
 
 
 
-/* Aggiunte per Google Drive - Inserisci nel tuo AssignTask.css */
+/* Aggiunte per Google Drive - Inserisci NEL TUO AssignTask.css */
 
 .attachments-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
-  gap: 12px;
-}
-
-.attachments-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.btn-drive,
-.btn-upload {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  border: none;
-  white-space: nowrap;
+  gap: 15px;
 }
 
 .btn-drive {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
   background: #1a73e8;
   color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  white-space: nowrap;
 }
 
 .btn-drive:hover:not(:disabled) {
@@ -654,47 +644,132 @@
   box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
 }
 
-.btn-upload {
-  background: #3b82f6;
-  color: white;
-}
-
-.btn-upload:hover:not(:disabled) {
-  background: #2563eb;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.btn-drive:disabled,
-.btn-upload:disabled {
+.btn-drive:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 .drive-icon-small {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
 }
 
 .spinner-small {
   display: inline-block;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
+.attachments-list {
+  margin-top: 20px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
 .drive-list {
-  background: #f0f9ff;
-  border: 1px solid #bae6fd;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 16px;
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: white;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+  gap: 15px;
+}
+
+.attachment-item:last-child {
+  margin-bottom: 0;
+}
+
+.attachment-item:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .drive-item {
-  background: white;
   border-left: 4px solid #1a73e8;
+}
+
+.attachment-name {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex: 1;
+  min-width: 0;
+}
+
+.attachment-icon {
+  font-size: 24px;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.attachment-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.attachment-title {
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+}
+
+.attachment-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 12px;
+  color: #6b7280;
+  flex-wrap: wrap;
+}
+
+.attachment-size {
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.attachment-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #e8f0fe;
+  color: #1a73e8;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .attachment-link {
@@ -719,31 +794,50 @@
   transform: scale(1.1);
 }
 
-.attachment-meta {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 12px;
-  color: #6b7280;
-  margin-top: 4px;
-}
-
-.attachment-source {
+.remove-attachment {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: #f3f4f6;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #4b5563;
+  justify-content: center;
 }
 
-.attachment-title {
-  font-weight: 600;
-  color: #1f2937;
-  word-break: break-word;
+.remove-attachment:hover:not(:disabled) {
+  background: #fef2f2;
+  transform: scale(1.1);
+}
+
+.remove-attachment:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.no-attachments-message {
+  text-align: center;
+  padding: 30px 20px;
+  background: #f9fafb;
+  border-radius: 10px;
+  color: #6b7280;
+  border: 1px dashed #d1d5db;
+}
+
+.no-attachments-message p {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.no-attachments-message small {
+  color: #9ca3af;
+  font-size: 13px;
 }
 
 /* Alert close button */
@@ -766,33 +860,28 @@
 @media (max-width: 640px) {
   .attachments-header {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
   
-  .attachments-actions {
+  .btn-drive {
     width: 100%;
-    justify-content: stretch;
-  }
-  
-  .btn-drive,
-  .btn-upload {
-    flex: 1;
     justify-content: center;
   }
   
   .attachment-item {
-    flex-wrap: wrap;
-    gap: 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
   }
   
-  .attachment-link {
-    order: 2;
+  .attachment-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
   
+  .attachment-link,
   .remove-attachment {
-    order: 3;
+    width: 44px;
+    height: 44px;
   }
 }
-
-
-
