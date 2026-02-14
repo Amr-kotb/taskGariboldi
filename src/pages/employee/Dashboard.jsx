@@ -59,13 +59,14 @@ const getStatusColor = (status) => {
 const EmployeeDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { tasks, loading: tasksLoading, loadUserTasks, updateTask } = useTasks();
+  const { tasks, loading: tasksLoading, loadAllTasks, updateTask } = useTasks();
   const { loadUserStats } = useStats();
   
   const [loading, setLoading] = useState(true);
   const [userStats, setUserStats] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState('tutti');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [viewMode, setViewMode] = useState('all'); // 'all' o 'mine'
 
   // Aggiorna l'ora ogni minuto
   useEffect(() => {
@@ -73,36 +74,42 @@ const EmployeeDashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Carica i task dell'utente corrente
+  // MODIFICA 1: Carica TUTTI i task (non solo quelli dell'utente)
   useEffect(() => {
     const loadUserData = async () => {
       if (!user?.uid) return;
       
       try {
-        console.log('📊 [EmployeeDashboard] Caricamento dati utente:', user.uid);
-        await loadUserTasks(user.uid);
+        console.log('📊 [EmployeeDashboard] Caricamento TUTTI i task...');
+        await loadAllTasks();
         
-        // Carica statistiche utente
+        // Le statistiche rimangono solo per l'utente corrente
         const stats = await loadUserStats(user.uid);
         setUserStats(stats);
       } catch (error) {
         console.error('❌ [EmployeeDashboard] Errore caricamento dati:', error);
       } finally {
         setLoading(false);
-        console.log('✅ [EmployeeDashboard] Dati caricati');
+        console.log('✅ [EmployeeDashboard] Dati caricati - Task totali:', tasks.length);
       }
     };
     
     loadUserData();
   }, [user]);
 
-  // Calcola statistiche REALI con useMemo per performance
+  // MODIFICA 2: Funzione per verificare se l'utente può modificare il task
+  const canModifyTask = (task) => {
+    return task.assignedTo === user?.uid;
+  };
+
+  // Calcola statistiche REALI (solo per l'utente corrente)
   const myStats = useMemo(() => {
-    const totalTasks = tasks.length;
-    const completed = tasks.filter(t => t.status === 'completato').length;
-    const inProgress = tasks.filter(t => t.status === 'in corso').length;
-    const assigned = tasks.filter(t => t.status === 'assegnato').length;
-    const overdue = tasks.filter(isTaskOverdue).length;
+    const userTasks = tasks.filter(t => t.assignedTo === user?.uid);
+    const totalTasks = userTasks.length;
+    const completed = userTasks.filter(t => t.status === 'completato').length;
+    const inProgress = userTasks.filter(t => t.status === 'in corso').length;
+    const assigned = userTasks.filter(t => t.status === 'assegnato').length;
+    const overdue = userTasks.filter(isTaskOverdue).length;
     
     const completionRate = totalTasks > 0 
       ? Math.round((completed / totalTasks) * 100) 
@@ -111,7 +118,7 @@ const EmployeeDashboard = () => {
     // Calcola task completati questa settimana
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const completedThisWeek = tasks.filter(t => {
+    const completedThisWeek = userTasks.filter(t => {
       if (t.status !== 'completato') return false;
       if (!t.completedAt) return false;
       try {
@@ -131,14 +138,20 @@ const EmployeeDashboard = () => {
       completionRate,
       completedThisWeek
     };
-  }, [tasks]);
+  }, [tasks, user?.uid]);
 
-  // Task filtrati per status
+  // MODIFICA 3: Task filtrati per status E modalità vista
   const filteredTasks = useMemo(() => {
-    if (selectedStatus === 'tutti') return tasks;
-    if (selectedStatus === 'overdue') return tasks.filter(isTaskOverdue);
-    return tasks.filter(task => task.status === selectedStatus);
-  }, [tasks, selectedStatus]);
+    // Prima filtra per modalità vista
+    let filtered = viewMode === 'mine' 
+      ? tasks.filter(task => task.assignedTo === user?.uid)
+      : tasks;
+    
+    // Poi filtra per status
+    if (selectedStatus === 'tutti') return filtered;
+    if (selectedStatus === 'overdue') return filtered.filter(isTaskOverdue);
+    return filtered.filter(task => task.status === selectedStatus);
+  }, [tasks, selectedStatus, viewMode, user?.uid]);
 
   // Task recenti (ultimi 3)
   const recentTasks = useMemo(() => filteredTasks.slice(0, 3), [filteredTasks]);
@@ -460,7 +473,7 @@ const EmployeeDashboard = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '30px' }}>
           {/* Colonna Sinistra: Task e Attività */}
           <div>
-            {/* Filtri Status */}
+            {/* MODIFICA 4: Toggle Vista e Filtri Status */}
             <div style={{
               backgroundColor: 'white',
               padding: '20px',
@@ -468,62 +481,80 @@ const EmployeeDashboard = () => {
               boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               marginBottom: '20px',
               display: 'flex',
-              gap: '10px',
-              flexWrap: 'wrap'
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '15px'
             }}>
-              {[
-                { label: 'Tutti', value: 'tutti', color: '#6b7280', count: myStats.totalTasks },
-                { label: 'Assegnati', value: 'assegnato', color: '#3b82f6', count: myStats.assigned },
-                { label: 'In Corso', value: 'in corso', color: '#f59e0b', count: myStats.inProgress },
-                { label: 'Completati', value: 'completato', color: '#10b981', count: myStats.completed },
-                ...(myStats.overdue > 0 ? [
-                  { label: 'In Ritardo', value: 'overdue', color: '#ef4444', count: myStats.overdue }
-                ] : [])
-              ].map((filter) => (
+              {/* Toggle Vista */}
+              <div style={{ display: 'flex', gap: '8px', background: '#f3f4f6', padding: '4px', borderRadius: '8px' }}>
                 <button
-                  key={filter.value}
-                  onClick={() => setSelectedStatus(filter.value)}
+                  onClick={() => setViewMode('all')}
                   style={{
-                    padding: '10px 20px',
-                    backgroundColor: selectedStatus === filter.value ? filter.color : '#f3f4f6',
-                    color: selectedStatus === filter.value ? 'white' : '#4b5563',
+                    padding: '8px 16px',
+                    backgroundColor: viewMode === 'all' ? '#3b82f6' : 'transparent',
+                    color: viewMode === 'all' ? 'white' : '#6b7280',
                     border: 'none',
-                    borderRadius: '8px',
+                    borderRadius: '6px',
                     cursor: 'pointer',
                     fontSize: '14px',
                     fontWeight: '500',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
                     transition: 'all 0.2s'
                   }}
-                  onMouseEnter={(e) => {
-                    if (selectedStatus !== filter.value) {
-                      e.currentTarget.style.backgroundColor = '#e5e7eb';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (selectedStatus !== filter.value) {
-                      e.currentTarget.style.backgroundColor = '#f3f4f6';
-                    }
+                >
+                  📋 Tutti i task ({tasks.length})
+                </button>
+                <button
+                  onClick={() => setViewMode('mine')}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: viewMode === 'mine' ? '#3b82f6' : 'transparent',
+                    color: viewMode === 'mine' ? 'white' : '#6b7280',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s'
                   }}
                 >
-                  <span>{filter.label}</span>
-                  <span style={{
-                    backgroundColor: selectedStatus === filter.value ? 'rgba(255,255,255,0.2)' : '#d1d5db',
-                    color: selectedStatus === filter.value ? 'white' : '#6b7280',
-                    padding: '2px 8px',
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                    fontWeight: '600'
-                  }}>
-                    {filter.count}
-                  </span>
+                  👤 I miei task ({tasks.filter(t => t.assignedTo === user?.uid).length})
                 </button>
-              ))}
+              </div>
+
+              {/* Filtri Status */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Tutti', value: 'tutti', color: '#6b7280' },
+                  { label: 'Assegnati', value: 'assegnato', color: '#3b82f6' },
+                  { label: 'In Corso', value: 'in corso', color: '#f59e0b' },
+                  { label: 'Completati', value: 'completato', color: '#10b981' },
+                  ...(myStats.overdue > 0 ? [
+                    { label: 'In Ritardo', value: 'overdue', color: '#ef4444' }
+                  ] : [])
+                ].map((filter) => (
+                  <button
+                    key={filter.value}
+                    onClick={() => setSelectedStatus(filter.value)}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: selectedStatus === filter.value ? filter.color : '#f3f4f6',
+                      color: selectedStatus === filter.value ? 'white' : '#4b5563',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Task Recenti */}
+            {/* Task List */}
             <div style={{
               backgroundColor: 'white',
               padding: '25px',
@@ -533,7 +564,8 @@ const EmployeeDashboard = () => {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ color: '#1f2937', fontSize: '18px', fontWeight: '600', margin: 0 }}>
-                  📋 Task {selectedStatus === 'tutti' ? 'Recenti' : selectedStatus.charAt(0).toUpperCase() + selectedStatus.slice(1)}
+                  {viewMode === 'mine' ? '👤 I Miei Task' : '📋 Tutti i Task'}
+                  {selectedStatus !== 'tutti' && ` - ${selectedStatus}`}
                 </h2>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button
@@ -574,18 +606,16 @@ const EmployeeDashboard = () => {
                     Nessun task trovato
                   </p>
                   <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                    {selectedStatus === 'completato' 
-                      ? 'Non hai ancora completato task!' 
-                      : selectedStatus === 'overdue'
-                      ? 'Ottimo! Nessun task in ritardo!'
-                      : 'Crea il tuo primo task o aspetta assegnazioni'}
+                    {viewMode === 'mine' 
+                      ? 'Non hai ancora task assegnati!' 
+                      : 'Non ci sono task in questa categoria'}
                   </p>
-                  {selectedStatus !== 'tutti' && (
+                  {viewMode === 'mine' && (
                     <button
-                      onClick={() => setSelectedStatus('tutti')}
+                      onClick={() => navigate('/employee/create-task')}
                       style={{
                         padding: '10px 20px',
-                        backgroundColor: '#3b82f6',
+                        backgroundColor: '#10b981',
                         color: 'white',
                         border: 'none',
                         borderRadius: '6px',
@@ -594,7 +624,7 @@ const EmployeeDashboard = () => {
                         fontWeight: '500'
                       }}
                     >
-                      Mostra tutti i task
+                      Crea il primo task
                     </button>
                   )}
                 </div>
@@ -605,6 +635,7 @@ const EmployeeDashboard = () => {
                     const isOverdue = daysRemaining !== null && daysRemaining < 0 && task.status !== 'completato';
                     const priorityColor = getPriorityColor(task.priority);
                     const statusColor = getStatusColor(task.status);
+                    const isOwnTask = canModifyTask(task);
                     
                     return (
                       <div
@@ -616,41 +647,54 @@ const EmployeeDashboard = () => {
                           border: '1px solid #e5e7eb',
                           borderLeft: `4px solid ${priorityColor}`,
                           transition: 'all 0.2s',
-                          position: 'relative'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = '#f3f4f6';
-                          e.currentTarget.style.transform = 'translateY(-2px)';
-                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = '#f9fafb';
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = 'none';
+                          position: 'relative',
+                          opacity: isOwnTask ? 1 : 0.9
                         }}
                       >
-                        {/* Status Badge */}
+                        {/* MODIFICA 5: Badge proprietario */}
                         <div style={{
                           position: 'absolute',
                           top: '20px',
                           right: '20px',
-                          padding: '4px 12px',
-                          backgroundColor: `${statusColor}15`,
-                          color: statusColor,
-                          borderRadius: '20px',
-                          fontSize: '12px',
-                          fontWeight: '600',
                           display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
+                          gap: '8px',
+                          alignItems: 'center'
                         }}>
+                          {/* Badge proprietario */}
                           <div style={{
-                            width: '6px',
-                            height: '6px',
-                            backgroundColor: statusColor,
-                            borderRadius: '50%'
-                          }}></div>
-                          {task.status?.toUpperCase()}
+                            padding: '4px 10px',
+                            backgroundColor: isOwnTask ? '#10b98120' : '#6b728020',
+                            color: isOwnTask ? '#10b981' : '#6b7280',
+                            borderRadius: '20px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            <span>{isOwnTask ? '👤 TUO' : `👥 Di ${task.assignedName || 'altro'}`}</span>
+                          </div>
+                          
+                          {/* Status Badge */}
+                          <div style={{
+                            padding: '4px 12px',
+                            backgroundColor: `${statusColor}15`,
+                            color: statusColor,
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            <div style={{
+                              width: '6px',
+                              height: '6px',
+                              backgroundColor: statusColor,
+                              borderRadius: '50%'
+                            }}></div>
+                            {task.status?.toUpperCase()}
+                          </div>
                         </div>
                         
                         <div style={{ marginBottom: '16px' }}>
@@ -664,6 +708,16 @@ const EmployeeDashboard = () => {
                                 lineHeight: '1.4'
                               }}>
                                 {task.title}
+                                {!isOwnTask && (
+                                  <span style={{
+                                    marginLeft: '8px',
+                                    fontSize: '11px',
+                                    color: '#9ca3af',
+                                    fontWeight: 'normal'
+                                  }}>
+                                    (sola lettura)
+                                  </span>
+                                )}
                               </h3>
                               
                               {task.description && (
@@ -728,7 +782,7 @@ const EmployeeDashboard = () => {
                           </div>
                         </div>
                         
-                        {/* Progresso e Azioni */}
+                        {/* MODIFICA 6: Progresso e Azioni - disabilitati se non è suo */}
                         <div style={{ 
                           display: 'flex', 
                           justifyContent: 'space-between', 
@@ -742,7 +796,7 @@ const EmployeeDashboard = () => {
                               <span style={{ fontSize: '12px', color: '#6b7280' }}>Progresso</span>
                               <span style={{ 
                                 fontSize: '12px', 
-                                color: '#3b82f6', 
+                                color: isOwnTask ? '#3b82f6' : '#9ca3af', 
                                 fontWeight: '600' 
                               }}>
                                 {task.progress || 0}%
@@ -758,51 +812,64 @@ const EmployeeDashboard = () => {
                                 style={{
                                   height: '100%',
                                   width: `${task.progress || 0}%`,
-                                  backgroundColor: task.progress === 100 ? '#10b981' : '#3b82f6',
+                                  backgroundColor: task.progress === 100 ? '#10b981' : (isOwnTask ? '#3b82f6' : '#9ca3af'),
                                   borderRadius: '3px',
                                   transition: 'width 0.3s ease'
                                 }}
                               />
                             </div>
-                            <div style={{ 
-                              display: 'flex', 
-                              justifyContent: 'space-between', 
-                              marginTop: '8px'
-                            }}>
-                              {[0, 25, 50, 75, 100].map(value => (
-                                <button
-                                  key={value}
-                                  onClick={() => handleProgressChange(task.id, value)}
-                                  style={{
-                                    padding: '4px 10px',
-                                    backgroundColor: value === task.progress ? '#3b82f6' : '#f3f4f6',
-                                    color: value === task.progress ? 'white' : '#6b7280',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '11px',
-                                    fontWeight: value === task.progress ? '600' : '400',
-                                    transition: 'all 0.2s'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (value !== task.progress) {
-                                      e.currentTarget.style.backgroundColor = '#e5e7eb';
-                                    }
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    if (value !== task.progress) {
-                                      e.currentTarget.style.backgroundColor = '#f3f4f6';
-                                    }
-                                  }}
-                                >
-                                  {value}%
-                                </button>
-                              ))}
-                            </div>
+                            
+                            {/* Pulsanti progresso - disabilitati se non è suo */}
+                            {isOwnTask ? (
+                              <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                marginTop: '8px'
+                              }}>
+                                {[0, 25, 50, 75, 100].map(value => (
+                                  <button
+                                    key={value}
+                                    onClick={() => handleProgressChange(task.id, value)}
+                                    style={{
+                                      padding: '4px 10px',
+                                      backgroundColor: value === task.progress ? '#3b82f6' : '#f3f4f6',
+                                      color: value === task.progress ? 'white' : '#6b7280',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: value === task.progress ? '600' : '400',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      if (value !== task.progress) {
+                                        e.currentTarget.style.backgroundColor = '#e5e7eb';
+                                      }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      if (value !== task.progress) {
+                                        e.currentTarget.style.backgroundColor = '#f3f4f6';
+                                      }
+                                    }}
+                                  >
+                                    {value}%
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ 
+                                fontSize: '11px', 
+                                color: '#9ca3af',
+                                marginTop: '8px',
+                                fontStyle: 'italic'
+                              }}>
+                                ⚠️ Solo in lettura
+                              </div>
+                            )}
                           </div>
                           
-                          {/* Azioni */}
-                          <div style={{ display: 'flex', gap: '10px' }}>
+                          {/* Select status - disabilitato se non è suo */}
+                          {isOwnTask ? (
                             <select
                               value={task.status}
                               onChange={(e) => handleStatusChange(task.id, e.target.value)}
@@ -829,9 +896,19 @@ const EmployeeDashboard = () => {
                               <option value="completato" style={{ backgroundColor: '#10b981' }}>Completato</option>
                               <option value="bloccato" style={{ backgroundColor: '#ef4444' }}>Bloccato</option>
                             </select>
-                            
-
-                          </div>
+                          ) : (
+                            <div style={{
+                              padding: '8px 16px',
+                              backgroundColor: '#f3f4f6',
+                              color: '#9ca3af',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              border: '1px dashed #d1d5db'
+                            }}>
+                              {task.status}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
