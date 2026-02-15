@@ -51,7 +51,7 @@ const getStatusColor = (status) => {
 const MyTasks = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { tasks, loading, error, subscribeToUserTasks, updateTask, moveToTrash } = useTasks();
+  const { tasks, loading, error, loadUserTasks, updateTask, moveToTrash } = useTasks();
 
   const [selectedStatus, setSelectedStatus] = useState('tutti');
   const [selectedPriority, setSelectedPriority] = useState('tutti');
@@ -59,6 +59,7 @@ const MyTasks = () => {
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [lastAutoUpdate, setLastAutoUpdate] = useState(new Date());
 
   // Stato per modale e notifiche
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -77,6 +78,7 @@ const MyTasks = () => {
     // Sottoscrizione real-time - SI AGGIORNA AUTOMATICAMENTE!
     const unsubscribe = subscribeToUserTasks(user.uid, (updatedTasks) => {
       console.log('📦 [MyTasks] Ricevuti', updatedTasks.length, 'task aggiornati in tempo reale');
+      setLastAutoUpdate(new Date());
     });
 
     // Pulisci quando il componente viene smontato
@@ -85,6 +87,38 @@ const MyTasks = () => {
       unsubscribe();
     };
   }, [user?.uid, subscribeToUserTasks]);
+
+  // 🔄 POLLING OGNI 5 MINUTI (300000 ms) - BACKUP PER SICUREZZA
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    console.log('⏰ [MyTasks] Attivato aggiornamento automatico ogni 5 minuti (backup)');
+    
+    const intervalId = setInterval(() => {
+      console.log('🔄 [MyTasks] Aggiornamento automatico dati...');
+      
+      // Ricarica i task senza refreshare la pagina
+      loadUserTasks(user.uid).then(() => {
+        setLastAutoUpdate(new Date());
+        console.log('✅ [MyTasks] Dati aggiornati automaticamente');
+        
+        // Mostra una piccola notifica silenziosa
+        setNotification({
+          type: 'info',
+          message: 'Dati aggiornati automaticamente'
+        });
+      }).catch(err => {
+        console.error('❌ [MyTasks] Errore aggiornamento automatico:', err);
+      });
+      
+    }, 300000); // 5 minuti = 300000 ms
+
+    // Pulisci l'intervallo quando il componente viene smontato
+    return () => {
+      console.log('⏰ [MyTasks] Disattivato aggiornamento automatico');
+      clearInterval(intervalId);
+    };
+  }, [user?.uid, loadUserTasks]);
 
   // Monitora stato connessione
   useEffect(() => {
@@ -284,6 +318,17 @@ const MyTasks = () => {
     }
   };
 
+  // Funzione per aggiornamento manuale
+  const handleManualUpdate = () => {
+    loadUserTasks(user?.uid).then(() => {
+      setLastAutoUpdate(new Date());
+      setNotification({
+        type: 'info',
+        message: 'Aggiornamento manuale completato'
+      });
+    });
+  };
+
   if (loading && tasks.length === 0) {
     return (
       <div style={{
@@ -320,38 +365,24 @@ const MyTasks = () => {
           top: '20px',
           right: '20px',
           zIndex: 1000,
-          padding: '16px 20px',
-          backgroundColor: notification.type === 'success' ? '#10b981' : '#ef4444',
+          padding: '12px 16px',
+          backgroundColor: notification.type === 'success' ? '#10b981' : 
+                         notification.type === 'error' ? '#ef4444' : 
+                         '#3b82f6',
           color: 'white',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          borderRadius: '6px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px',
-          minWidth: '300px',
-          animation: 'slideInRight 0.3s ease'
+          gap: '10px',
+          minWidth: '200px',
+          fontSize: '13px',
+          animation: 'fadeIn 0.3s ease'
         }}>
-          <div style={{ fontSize: '20px' }}>
-            {notification.type === 'success' ? '✅' : '⚠️'}
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '14px', fontWeight: '500' }}>
-              {notification.message}
-            </div>
-          </div>
-          <button
-            onClick={() => setNotification(null)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: '18px',
-              padding: '0'
-            }}
-          >
-            ×
-          </button>
+          <span>{notification.type === 'success' ? '✅' : 
+                 notification.type === 'error' ? '❌' : 
+                 '🔄'}</span>
+          <span>{notification.message}</span>
         </div>
       )}
 
@@ -383,11 +414,12 @@ const MyTasks = () => {
             >
               ← Torna alla Dashboard
             </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
               <h1 style={{ fontSize: '28px', color: '#1f2937', margin: 0, fontWeight: '700' }}>
                 📋 I Miei Task
               </h1>
-              {/* 🔥 Indicatore real-time */}
+              
+              {/* Indicatore online/offline */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -405,8 +437,46 @@ const MyTasks = () => {
                   borderRadius: '50%',
                   animation: isOnline ? 'pulse 2s infinite' : 'none'
                 }}></span>
-                <span>{isOnline ? 'Aggiornamenti in tempo reale' : 'Offline'}</span>
+                <span>{isOnline ? 'Connesso' : 'Offline'}</span>
               </div>
+
+              {/* Indicatore ultimo aggiornamento */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                backgroundColor: '#f3f4f6',
+                borderRadius: '20px',
+                fontSize: '12px',
+                color: '#4b5563'
+              }}>
+                <span>🕐</span>
+                <span>Ultimo agg.: {lastAutoUpdate.toLocaleTimeString()}</span>
+              </div>
+
+              {/* Pulsante aggiornamento manuale */}
+              <button
+                onClick={handleManualUpdate}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#f3f4f6',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  color: '#4b5563',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'background-color 0.2s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+              >
+                <span>🔄</span>
+                Aggiorna ora
+              </button>
             </div>
             <p style={{ color: '#6b7280', margin: '8px 0 0 0', fontSize: '15px' }}>
               Gestisci tutti i task assegnati a te ({tasks.length} task)
@@ -427,8 +497,11 @@ const MyTasks = () => {
                 fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px'
+                gap: '8px',
+                transition: 'background-color 0.2s ease'
               }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
             >
               <span style={{ fontSize: '18px' }}>➕</span>
               Nuovo Task
