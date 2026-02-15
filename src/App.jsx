@@ -31,8 +31,8 @@ const LoadingSpinner = () => (
 );
 
 // Lazy Loading con fallback sicuro
-const withFallback = (importFunc, title, role = 'Utente') => 
-  lazy(() => importFunc().catch(() => ({ 
+const withFallback = (importFunc, title, role = 'Utente') =>
+  lazy(() => importFunc().catch(() => ({
     default: () => (
       <div style={{
         padding: '40px 20px',
@@ -44,7 +44,7 @@ const withFallback = (importFunc, title, role = 'Utente') =>
           <h1 style={{ color: '#1f2937', fontSize: '28px', marginBottom: '10px' }}>{title}</h1>
           <p style={{ color: '#6b7280', fontSize: '16px' }}>Area {role}</p>
         </div>
-        
+
         <div style={{
           backgroundColor: '#f9fafb',
           padding: '40px',
@@ -56,11 +56,11 @@ const withFallback = (importFunc, title, role = 'Utente') =>
           <h2 style={{ color: '#1f2937', marginBottom: '15px', fontSize: '24px' }}>
             Pagina in fase di sviluppo
           </h2>
-          <p style={{ 
-            color: '#6b7280', 
-            marginBottom: '25px', 
+          <p style={{
+            color: '#6b7280',
+            marginBottom: '25px',
             fontSize: '16px',
-            lineHeight: '1.5' 
+            lineHeight: '1.5'
           }}>
             Questa sezione è attualmente in costruzione.
             <br />
@@ -138,16 +138,16 @@ const NotFound = () => (
     textAlign: 'center'
   }}>
     <div style={{ fontSize: '96px', marginBottom: '20px' }}>404</div>
-    <h1 style={{ 
-      fontSize: '32px', 
+    <h1 style={{
+      fontSize: '32px',
       color: '#1f2937',
       marginBottom: '10px'
     }}>
       Pagina non trovata
     </h1>
-    <p style={{ 
-      fontSize: '18px', 
-      color: '#6b7280', 
+    <p style={{
+      fontSize: '18px',
+      color: '#6b7280',
       marginBottom: '30px',
       maxWidth: '500px'
     }}>
@@ -200,59 +200,65 @@ const BaseLayout = () => {
 // ========== COMPONENTE PROTECTED ROUTE MIGLIORATO ==========
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { user, loading } = useAuth();
-  
-  console.log('🛡️ [ProtectedRoute] Controllo accesso:', { 
-    user: user ? `${user.email} (${user.role})` : 'null', 
+
+  console.log('🛡️ [ProtectedRoute] Controllo accesso:', {
+    user: user ? `${user.email} (${user.role})` : 'null',
     requiredRole,
-    loading 
+    loading
   });
-  
+
   if (loading) {
     return <LoadingSpinner />;
   }
-  
+
   if (!user) {
     console.log('❌ [ProtectedRoute] Utente non autenticato, reindirizzo a /login');
     return <Navigate to="/login" replace />;
   }
-  
-  // LOGICA MIGLIORATA: gestione multipla ruoli
+
+  // ✅ LOGICA MIGLIORATA: gestione multipla ruoli
   if (requiredRole) {
     const userRole = user.role?.toLowerCase().trim();
     const requiredRoleLower = requiredRole.toLowerCase().trim();
-    
-    console.log(`🔍 [ProtectedRoute] Controllo ruolo: ${userRole} vs ${requiredRoleLower}`);
-    
-    // Definisci chi può accedere a cosa
+
+    console.log(`🔍 [ProtectedRoute] Controllo ruolo: "${userRole}" vs "${requiredRoleLower}"`);
+
+    // ✅ Definisci chi può accedere a cosa (con multiple varianti)
     const roleAccess = {
       'admin': {
         allowedRoles: ['admin', 'administrator', 'amministratore', 'superadmin'],
         redirectPath: '/admin/dashboard'
       },
-      'dipendente': {
+      'employee': {
+        // ✅ Include sia 'employee' che 'dipendente' e varianti
         allowedRoles: ['dipendente', 'employee', 'user', 'utente'],
         redirectPath: '/employee/dashboard'
       }
     };
-    
-    // Controlla se l'utente può accedere
+
+    // Trova la configurazione per il ruolo richiesto
     const accessConfig = roleAccess[requiredRoleLower];
+
+    // ✅ Controlla se il ruolo dell'utente è nella lista dei ruoli consentiti
     const isAuthorized = accessConfig && accessConfig.allowedRoles.includes(userRole);
-    
+
     if (!isAuthorized) {
       console.log(`🚫 [ProtectedRoute] Accesso negato: ${userRole} non può accedere a ${requiredRoleLower}`);
-      
+
       // Reindirizza alla dashboard corretta
       if (userRole === 'admin' || userRole === 'administrator' || userRole === 'amministratore') {
         console.log('↪️ [ProtectedRoute] Reindirizzo admin a /admin/dashboard');
         return <Navigate to="/admin/dashboard" replace />;
-      } else {
+      } else if (userRole === 'dipendente' || userRole === 'employee' || userRole === 'user' || userRole === 'utente') {
         console.log('↪️ [ProtectedRoute] Reindirizzo dipendente a /employee/dashboard');
         return <Navigate to="/employee/dashboard" replace />;
+      } else {
+        console.log('↪️ [ProtectedRoute] Ruolo sconosciuto, reindirizzo a /login');
+        return <Navigate to="/login" replace />;
       }
     }
   }
-  
+
   console.log('✅ [ProtectedRoute] Accesso autorizzato per:', user.email);
   return children;
 };
@@ -266,9 +272,9 @@ const AdminLayout = () => (
   </ProtectedRoute>
 );
 
-// Layout Employee - USIAMO "dipendente" come nel firestore.js
+// Layout Employee - richiede ruolo 'employee' (ma accetta anche 'dipendente' grazie alla logica in ProtectedRoute)
 const EmployeeLayout = () => (
-  <ProtectedRoute requiredRole="dipendente">
+  <ProtectedRoute requiredRole="employee">
     <Suspense fallback={<LoadingSpinner />}>
       <Outlet />
     </Suspense>
@@ -278,7 +284,7 @@ const EmployeeLayout = () => (
 // Debug component per vedere i ruoli
 const DebugAuth = () => {
   const { user } = useAuth();
-  
+
   React.useEffect(() => {
     if (user) {
       console.log('🔍 [DEBUG-Auth] Utente attuale:', {
@@ -288,23 +294,30 @@ const DebugAuth = () => {
         name: user.name,
         department: user.department
       });
-      
+
       // Auto-redirect se admin sta in area dipendente
-      if ((user.role === 'admin' || user.role === 'administrator') && 
-          window.location.pathname.startsWith('/employee')) {
+      if ((user.role === 'admin' || user.role === 'administrator' || user.role === 'amministratore') &&
+        window.location.pathname.startsWith('/employee')) {
         console.log('🔄 [Auto-Redirect] Admin trovato in area dipendente, reindirizzo...');
         window.location.href = '/admin/dashboard';
       }
+
+      // Auto-redirect se dipendente sta in area admin
+      if ((user.role === 'employee' || user.role === 'dipendente' || user.role === 'user' || user.role === 'utente') &&
+        window.location.pathname.startsWith('/admin')) {
+        console.log('🔄 [Auto-Redirect] Dipendente trovato in area admin, reindirizzo...');
+        window.location.href = '/employee/dashboard';
+      }
     }
   }, [user]);
-  
+
   return null;
 };
 
 // Componente App principale
 function App() {
   console.log('🏁 [App] Componente App montato');
-  
+
   return (
     <AuthProvider>
       <DebugAuth />
@@ -322,7 +335,7 @@ function App() {
             <Route path="login" element={<Login />} />
             <Route path="login/redirect" element={<LoginRedirect />} />
           </Route>
-          
+
           {/* ==================== */}
           {/* LAYOUT ADMIN */}
           {/* ==================== */}
@@ -339,7 +352,7 @@ function App() {
             <Route path="activity" element={<AdminActivity />} />
             <Route path="trash" element={<AdminTrash />} />
           </Route>
-          
+
           {/* ==================== */}
           {/* LAYOUT DIPENDENTE */}
           {/* ==================== */}
@@ -354,25 +367,25 @@ function App() {
             <Route path="trash" element={<EmployeeTrash />} />
             <Route path="create-task" element={<EmployeeCreateTask />} />
           </Route>
-          
+
           {/* ==================== */}
           {/* REDIRECTS AUTOMATICI */}
           {/* ==================== */}
-          
+
           {/* Redirect per admin che accede a /employee */}
           <Route path="/employee/*" element={
             <ProtectedRoute requiredRole="admin">
               <Navigate to="/admin/dashboard" replace />
             </ProtectedRoute>
           } />
-          
+
           {/* Redirect per dipendente che accede a /admin */}
           <Route path="/admin/*" element={
-            <ProtectedRoute requiredRole="dipendente">
+            <ProtectedRoute requiredRole="employee">
               <Navigate to="/employee/dashboard" replace />
             </ProtectedRoute>
           } />
-          
+
           {/* ==================== */}
           {/* 404 - NOT FOUND */}
           {/* ==================== */}
@@ -448,12 +461,12 @@ const GlobalStyles = () => {
       }
     `;
     document.head.appendChild(style);
-    
+
     return () => {
       document.head.removeChild(style);
     };
   }, []);
-  
+
   return null;
 };
 

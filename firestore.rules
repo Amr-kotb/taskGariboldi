@@ -22,7 +22,7 @@ service cloud.firestore {
     }
     
     function isValidEmail(email) {
-      return email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');  
+      return email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
     }
     
     function isValidTask() {
@@ -57,14 +57,17 @@ service cloud.firestore {
     
     // === COLLEZIONE TASK ===
     match /tasks/{taskId} {
-      allow read: if isAuthenticated() && (isTaskOwner() || isAdmin());
+      // ✅ MODIFICATO: TUTTI gli utenti autenticati possono LEGGERE tutte le task
+      allow read: if isAuthenticated();
       
+      // ✅ Creazione: admin o self-assignment
       allow create: if isAuthenticated() && 
         (request.resource.data.assignedTo == request.auth.uid || isAdmin()) &&
         isValidTask();
       
+      // ✅ MODIFICATO: SOLO l'assegnatario può MODIFICARE
       allow update: if isAuthenticated() && 
-        (isTaskOwner() || isAdmin()) &&
+        isTaskOwner() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status', 'notes', 'progress', 'updatedAt', 'completedAt'
         ]);

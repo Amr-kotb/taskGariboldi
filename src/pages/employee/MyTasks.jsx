@@ -51,14 +51,15 @@ const getStatusColor = (status) => {
 const MyTasks = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { tasks, loading, error, loadUserTasks, updateTask, moveToTrash } = useTasks();
-  
+  const { tasks, loading, error, subscribeToUserTasks, updateTask, moveToTrash } = useTasks();
+
   const [selectedStatus, setSelectedStatus] = useState('tutti');
   const [selectedPriority, setSelectedPriority] = useState('tutti');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
-  
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
   // Stato per modale e notifiche
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -67,12 +68,37 @@ const MyTasks = () => {
 
   console.log('👤 [MyTasks] Pagina task dipendente caricata');
 
-  // Carica task dell'utente al mount
+  // 🔥 REAL-TIME UPDATES - Sostituisce il vecchio useEffect
   useEffect(() => {
-    if (user?.uid) {
-      loadUserTasks(user.uid);
-    }
-  }, [user, loadUserTasks]);
+    if (!user?.uid) return;
+
+    console.log('🎯 [MyTasks] Attivazione real-time per:', user.email);
+    
+    // Sottoscrizione real-time - SI AGGIORNA AUTOMATICAMENTE!
+    const unsubscribe = subscribeToUserTasks(user.uid, (updatedTasks) => {
+      console.log('📦 [MyTasks] Ricevuti', updatedTasks.length, 'task aggiornati in tempo reale');
+    });
+
+    // Pulisci quando il componente viene smontato
+    return () => {
+      console.log('🔌 [MyTasks] Disattivazione real-time');
+      unsubscribe();
+    };
+  }, [user?.uid, subscribeToUserTasks]);
+
+  // Monitora stato connessione
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Nasconde la notifica dopo 3 secondi
   useEffect(() => {
@@ -95,9 +121,9 @@ const MyTasks = () => {
       const daysRemaining = getDaysRemaining(task.dueDate);
       return daysRemaining !== null && daysRemaining < 0;
     }).length;
-    
-    const completionRate = totalTasks > 0 
-      ? Math.round((completed / totalTasks) * 100) 
+
+    const completionRate = totalTasks > 0
+      ? Math.round((completed / totalTasks) * 100)
       : 0;
 
     return {
@@ -135,7 +161,7 @@ const MyTasks = () => {
     // Filtro per ricerca
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(task => 
+      result = result.filter(task =>
         task.title.toLowerCase().includes(query) ||
         (task.description && task.description.toLowerCase().includes(query)) ||
         (task.category && task.category.toLowerCase().includes(query))
@@ -145,7 +171,7 @@ const MyTasks = () => {
     // Ordinamento
     result.sort((a, b) => {
       let aValue, bValue;
-      
+
       switch (sortBy) {
         case 'title':
           aValue = a.title.toLowerCase();
@@ -168,7 +194,7 @@ const MyTasks = () => {
           aValue = a.createdAt ? (a.createdAt.toDate ? a.createdAt.toDate() : new Date(a.createdAt)) : new Date(0);
           bValue = b.createdAt ? (b.createdAt.toDate ? b.createdAt.toDate() : new Date(b.createdAt)) : new Date(0);
       }
-      
+
       if (sortOrder === 'asc') {
         return aValue > bValue ? 1 : -1;
       } else {
@@ -181,11 +207,11 @@ const MyTasks = () => {
 
   const handleStatusChange = async (taskId, newStatus) => {
     try {
-      await updateTask(taskId, { 
+      await updateTask(taskId, {
         status: newStatus,
         ...(newStatus === 'completato' && { completedAt: new Date().toISOString() })
       });
-      
+
       // Notifica
       setNotification({
         type: 'success',
@@ -203,7 +229,7 @@ const MyTasks = () => {
   const handleProgressChange = async (taskId, progress) => {
     try {
       await updateTask(taskId, { progress });
-      
+
       setNotification({
         type: 'success',
         message: 'Progresso aggiornato con successo!'
@@ -226,18 +252,18 @@ const MyTasks = () => {
   // Funzione per spostare nel cestino
   const handleMoveToTrash = async () => {
     if (!selectedTask || !user) return;
-    
+
     setIsDeleting(true);
-    
+
     try {
       const result = await moveToTrash(selectedTask.id, user);
-      
+
       if (result.success) {
         setNotification({
           type: 'success',
           message: 'Task spostato nel cestino con successo!'
         });
-        
+
         // Chiudi il modal
         setShowDeleteModal(false);
         setSelectedTask(null);
@@ -286,7 +312,7 @@ const MyTasks = () => {
       fontFamily: "'Segoe UI', 'Inter', -apple-system, sans-serif",
       position: 'relative'
     }}>
-      
+
       {/* Notifiche */}
       {notification && (
         <div style={{
@@ -328,7 +354,7 @@ const MyTasks = () => {
           </button>
         </div>
       )}
-      
+
       {/* Header */}
       <div style={{
         backgroundColor: 'white',
@@ -357,14 +383,36 @@ const MyTasks = () => {
             >
               ← Torna alla Dashboard
             </button>
-            <h1 style={{ fontSize: '28px', color: '#1f2937', margin: 0, fontWeight: '700' }}>
-              📋 I Miei Task
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              <h1 style={{ fontSize: '28px', color: '#1f2937', margin: 0, fontWeight: '700' }}>
+                📋 I Miei Task
+              </h1>
+              {/* 🔥 Indicatore real-time */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                backgroundColor: '#f3f4f6',
+                borderRadius: '20px',
+                fontSize: '13px',
+                color: '#4b5563'
+              }}>
+                <span style={{
+                  width: '10px',
+                  height: '10px',
+                  backgroundColor: isOnline ? '#10b981' : '#ef4444',
+                  borderRadius: '50%',
+                  animation: isOnline ? 'pulse 2s infinite' : 'none'
+                }}></span>
+                <span>{isOnline ? 'Aggiornamenti in tempo reale' : 'Offline'}</span>
+              </div>
+            </div>
             <p style={{ color: '#6b7280', margin: '8px 0 0 0', fontSize: '15px' }}>
               Gestisci tutti i task assegnati a te ({tasks.length} task)
             </p>
           </div>
-          
+
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
               onClick={() => navigate('/employee/create-task')}
@@ -504,7 +552,7 @@ const MyTasks = () => {
                 outline: 'none'
               }}
             >
-              <option value="tutti">📊 Tutti gli stati</option>
+              <option value="tutti">📈 Tutti gli stati</option>
               <option value="assegnato">🔵 Assegnati ({tasks.filter(t => t.status === 'assegnato').length})</option>
               <option value="in corso">🟡 In Corso ({stats.inProgress})</option>
               <option value="completato">🟢 Completati ({stats.completed})</option>
@@ -533,7 +581,7 @@ const MyTasks = () => {
             >
               <option value="tutti">🎯 Tutte le priorità</option>
               <option value="critica">🔴 Critica ({tasks.filter(t => t.priority === 'critica').length})</option>
-              <option value="alta">🔴 Alta ({tasks.filter(t => t.priority === 'alta').length})</option>
+              <option value="alta">🟠 Alta ({tasks.filter(t => t.priority === 'alta').length})</option>
               <option value="media">🟡 Media ({tasks.filter(t => t.priority === 'media').length})</option>
               <option value="bassa">🟢 Bassa ({tasks.filter(t => t.priority === 'bassa').length})</option>
             </select>
@@ -559,7 +607,7 @@ const MyTasks = () => {
               <option value="dueDate">⏳ Ordina per scadenza</option>
               <option value="title">🔤 Ordina per titolo</option>
               <option value="priority">🎯 Ordina per priorità</option>
-              <option value="progress">📈 Ordina per progresso</option>
+              <option value="progress">📊 Ordina per progresso</option>
             </select>
 
             <button
@@ -631,28 +679,28 @@ const MyTasks = () => {
           </div>
 
           {filteredAndSortedTasks.length === 0 ? (
-            <div style={{ 
-              textAlign: 'center', 
+            <div style={{
+              textAlign: 'center',
               padding: '60px 20px',
               backgroundColor: '#f9fafb'
             }}>
               <div style={{ fontSize: '64px', marginBottom: '20px' }}>📭</div>
-              <h3 style={{ 
-                fontSize: '20px', 
-                color: '#1f2937', 
+              <h3 style={{
+                fontSize: '20px',
+                color: '#1f2937',
                 marginBottom: '12px',
                 fontWeight: '600'
               }}>
                 Nessun task trovato
               </h3>
-              <p style={{ 
-                fontSize: '15px', 
+              <p style={{
+                fontSize: '15px',
                 color: '#6b7280',
                 marginBottom: '24px',
                 maxWidth: '500px',
                 margin: '0 auto 24px'
               }}>
-                {searchQuery 
+                {searchQuery
                   ? `Nessun risultato per "${searchQuery}". Prova con un'altra ricerca.`
                   : selectedStatus !== 'tutti' || selectedPriority !== 'tutti'
                   ? 'Nessun task corrisponde ai filtri selezionati.'
@@ -690,7 +738,7 @@ const MyTasks = () => {
                 const isOverdue = daysRemaining !== null && daysRemaining < 0 && task.status !== 'completato';
                 const priorityColor = getPriorityColor(task.priority);
                 const statusColor = getStatusColor(task.status);
-                
+
                 return (
                   <div
                     key={task.id}
@@ -709,9 +757,9 @@ const MyTasks = () => {
                   >
                     {/* Titolo e Descrizione */}
                     <div>
-                      <div style={{ 
-                        fontSize: '15px', 
-                        fontWeight: '600', 
+                      <div style={{
+                        fontSize: '15px',
+                        fontWeight: '600',
                         color: '#1f2937',
                         marginBottom: '6px',
                         display: 'flex',
@@ -733,13 +781,13 @@ const MyTasks = () => {
                         )}
                       </div>
                       {task.description && (
-                        <div style={{ 
-                          fontSize: '13px', 
+                        <div style={{
+                          fontSize: '13px',
                           color: '#6b7280',
                           lineHeight: '1.4'
                         }}>
-                          {task.description.length > 80 
-                            ? `${task.description.substring(0, 80)}...` 
+                          {task.description.length > 80
+                            ? `${task.description.substring(0, 80)}...`
                             : task.description}
                         </div>
                       )}
@@ -778,8 +826,8 @@ const MyTasks = () => {
                     <div>
                       {task.dueDate ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                          <span style={{ 
-                            fontSize: '14px', 
+                          <span style={{
+                            fontSize: '14px',
                             color: isOverdue ? '#ef4444' : '#6b7280',
                             fontWeight: isOverdue ? '600' : '400'
                           }}>
@@ -789,16 +837,16 @@ const MyTasks = () => {
                             <span style={{
                               fontSize: '12px',
                               padding: '2px 8px',
-                              backgroundColor: isOverdue ? '#fee2e2' : 
+                              backgroundColor: isOverdue ? '#fee2e2' :
                                             daysRemaining === 0 ? '#fef3c7' : '#dbeafe',
-                              color: isOverdue ? '#dc2626' : 
+                              color: isOverdue ? '#dc2626' :
                                     daysRemaining === 0 ? '#92400e' : '#1e40af',
                               borderRadius: '4px',
                               fontWeight: '500',
                               display: 'inline-block'
                             }}>
-                              {isOverdue ? `Ritardo ${Math.abs(daysRemaining)}g` : 
-                               daysRemaining === 0 ? 'OGGI' : 
+                              {isOverdue ? `Ritardo ${Math.abs(daysRemaining)}g` :
+                               daysRemaining === 0 ? 'OGGI' :
                                `${daysRemaining}g`}
                             </span>
                           )}
@@ -812,9 +860,9 @@ const MyTasks = () => {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
                             marginBottom: '4px',
                             fontSize: '12px',
                             color: '#6b7280'
@@ -841,9 +889,9 @@ const MyTasks = () => {
                             />
                           </div>
                         </div>
-                        <div style={{ 
-                          display: 'flex', 
-                          flexDirection: 'column', 
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
                           gap: '2px',
                           marginLeft: '8px'
                         }}>
@@ -915,8 +963,6 @@ const MyTasks = () => {
 
                     {/* Azioni */}
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      
-                      
                       <button
                         onClick={() => handleOpenDeleteModal(task)}
                         style={{
@@ -985,7 +1031,7 @@ const MyTasks = () => {
                 <button
                   onClick={() => {
                     // Export as CSV
-                    const csv = filteredAndSortedTasks.map(task => 
+                    const csv = filteredAndSortedTasks.map(task =>
                       `"${task.title}","${task.status}","${task.priority}","${task.dueDate ? formatDate(task.dueDate) : ''}","${task.progress}%"`
                     ).join('\n');
                     const blob = new Blob([`Titolo,Status,Priorità,Scadenza,Progresso\n${csv}`], { type: 'text/csv' });
@@ -1012,14 +1058,14 @@ const MyTasks = () => {
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
                 >
-                  📥 Esporta CSV
+                  📤 Esporta CSV
                 </button>
               </div>
             </div>
           )}
         </div>
       </div>
-      
+
       {/* Modal Eliminazione */}
       {showDeleteModal && selectedTask && (
         <div style={{
@@ -1051,8 +1097,8 @@ const MyTasks = () => {
                 Sposta nel Cestino
               </h2>
             </div>
-            
-            <div style={{ 
+
+            <div style={{
               backgroundColor: '#fef2f2',
               border: '1px solid #fecaca',
               borderRadius: '8px',
@@ -1070,8 +1116,8 @@ const MyTasks = () => {
                   </p>
                 </div>
               </div>
-              
-              <div style={{ 
+
+              <div style={{
                 backgroundColor: 'white',
                 border: '1px solid #e5e7eb',
                 borderRadius: '8px',
@@ -1085,8 +1131,8 @@ const MyTasks = () => {
                 </div>
                 {selectedTask.description && (
                   <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '12px' }}>
-                    {selectedTask.description.length > 100 
-                      ? `${selectedTask.description.substring(0, 100)}...` 
+                    {selectedTask.description.length > 100
+                      ? `${selectedTask.description.substring(0, 100)}...`
                       : selectedTask.description}
                   </div>
                 )}
@@ -1126,8 +1172,8 @@ const MyTasks = () => {
                 </div>
               </div>
             </div>
-            
-            <div style={{ 
+
+            <div style={{
               backgroundColor: '#f0f9ff',
               border: '1px solid #bae6fd',
               borderRadius: '8px',
@@ -1141,7 +1187,7 @@ const MyTasks = () => {
                 </div>
               </div>
             </div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
               <button
                 onClick={() => {
@@ -1215,7 +1261,7 @@ const MyTasks = () => {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
-        
+
         @keyframes slideInRight {
           from {
             transform: translateX(100%);
@@ -1226,7 +1272,7 @@ const MyTasks = () => {
             opacity: 1;
           }
         }
-        
+
         @keyframes fadeIn {
           from {
             opacity: 0;
@@ -1235,7 +1281,7 @@ const MyTasks = () => {
             opacity: 1;
           }
         }
-        
+
         @keyframes slideUp {
           from {
             transform: translateY(20px);
@@ -1245,6 +1291,11 @@ const MyTasks = () => {
             transform: translateY(0);
             opacity: 1;
           }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
         }
       `}</style>
     </div>

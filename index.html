@@ -1,1 +1,147 @@
-<!DOCTYPE html><html lang="it"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>TaskGariboldi</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html> 
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TaskGariboldi</title>
+  
+  <!-- 🔴 SCRIPT DI ISOLAMENTO TABS - DEVE ESSERE PRIMA DI TUTTO -->
+  <script>
+    (function() {
+      // Genera un ID univoco per questa tab
+      const TAB_ID = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      sessionStorage.setItem('tab_id', TAB_ID);
+      console.log('🔷 [Tab] ID generato:', TAB_ID);
+      
+      // Pulisci localStorage all'avvio
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => {
+        console.log('   🗑️ Rimossa chiave:', key);
+        localStorage.removeItem(key);
+      });
+      console.log('✅ [Tab] Pulite chiavi localStorage:', keysToRemove.length);
+      
+      // Salva lo stato di questa tab
+      sessionStorage.setItem('tab_active', 'true');
+      sessionStorage.setItem('tab_start', Date.now().toString());
+      
+      // Intercetta e blocca localStorage per chiavi Firebase
+      const originalSetItem = localStorage.setItem;
+      const originalGetItem = localStorage.getItem;
+      const originalRemoveItem = localStorage.removeItem;
+      
+      // Override di localStorage.setItem
+      localStorage.setItem = function(key, value) {
+        if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+          console.warn('🚫 [Tab] Bloccato scrittura in localStorage:', key);
+          // Reindirizza a sessionStorage con prefisso tab
+          sessionStorage.setItem(key + '_' + TAB_ID, value);
+          return;
+        }
+        originalSetItem.call(this, key, value);
+      };
+      
+      // Override di localStorage.getItem
+      localStorage.getItem = function(key) {
+        if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+          // Prima cerca in sessionStorage, poi in localStorage come fallback
+          const sessionValue = sessionStorage.getItem(key + '_' + TAB_ID);
+          if (sessionValue) return sessionValue;
+          
+          const localValue = originalGetItem.call(this, key);
+          if (localValue) {
+            console.warn('⚠️ [Tab] Trovato dato in localStorage, migro a sessionStorage:', key);
+            sessionStorage.setItem(key + '_' + TAB_ID, localValue);
+            originalRemoveItem.call(this, key);
+            return localValue;
+          }
+          return null;
+        }
+        return originalGetItem.call(this, key);
+      };
+      
+      // Override di localStorage.removeItem
+      localStorage.removeItem = function(key) {
+        if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+          sessionStorage.removeItem(key + '_' + TAB_ID);
+          return;
+        }
+        originalRemoveItem.call(this, key);
+      };
+      
+      // Verifica se un'altra tab è già attiva
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'tab_active_check') {
+          console.log('👀 [Tab] Rilevata altra tab attiva');
+          // Invia un messaggio all'utente
+          if (confirm('Sessione già attiva in un\'altra tab. Vuoi continuare qui?')) {
+            // L'utente vuole forzare questa tab
+            localStorage.setItem('tab_force_' + TAB_ID, 'true');
+          } else {
+            // Reindirizza al login
+            window.location.href = '/login';
+          }
+        }
+      });
+      
+      // Segnala che questa tab è attiva
+      setTimeout(() => {
+        localStorage.setItem('tab_active_check', TAB_ID);
+      }, 100);
+      
+      console.log('✅ [Tab] Inizializzazione completata per tab:', TAB_ID);
+    })();
+  </script>
+  
+  <!-- Altri stili o meta tags -->
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background-color: #f8fafc;
+    }
+    
+    #root {
+      min-height: 100vh;
+    }
+    
+    /* Loading spinner globale */
+    .global-loader {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f8fafc;
+    }
+    
+    .global-loader::after {
+      content: "";
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e5e7eb;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <!-- Loading iniziale visibile durante il caricamento di React -->
+    <div class="global-loader"></div>
+  </div>
+  
+  <!-- Script principale di React -->
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

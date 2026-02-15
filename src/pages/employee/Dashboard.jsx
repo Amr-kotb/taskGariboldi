@@ -57,11 +57,30 @@ const getStatusColor = (status) => {
 };
 
 const EmployeeDashboard = () => {
+  // ✅ UNA SOLA DICHIARAZIONE
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // 🔴 DEBUG DIRETTO - Mostra esattamente cosa arriva
+  console.log('========== DEBUG UTENTE ==========');
+  console.log('user object:', user);
+  console.log('user.role:', user?.role);
+  console.log('user.role type:', typeof user?.role);
+  console.log('user.role lowercase:', user?.role?.toLowerCase());
+  console.log('isEmployee check:', user?.role === 'dipendente');
+  console.log('isEmployee check 2:', user?.role === 'employee');
+  console.log('===================================');
+
+  // Se il ruolo non è riconosciuto, mostra un alert
+  useEffect(() => {
+    if (user && user.role !== 'dipendente' && user.role !== 'employee') {
+      alert(`RUOLO SCONOSCIUTO: "${user.role}"`);
+    }
+  }, [user]);
+
   const { tasks, loading: tasksLoading, loadAllTasks, updateTask } = useTasks();
   const { loadUserStats } = useStats();
-  
+
   const [loading, setLoading] = useState(true);
   const [userStats, setUserStats] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState('tutti');
@@ -78,11 +97,11 @@ const EmployeeDashboard = () => {
   useEffect(() => {
     const loadUserData = async () => {
       if (!user?.uid) return;
-      
+
       try {
         console.log('📊 [EmployeeDashboard] Caricamento TUTTI i task...');
         await loadAllTasks();
-        
+
         // Le statistiche rimangono solo per l'utente corrente
         const stats = await loadUserStats(user.uid);
         setUserStats(stats);
@@ -93,7 +112,7 @@ const EmployeeDashboard = () => {
         console.log('✅ [EmployeeDashboard] Dati caricati - Task totali:', tasks.length);
       }
     };
-    
+
     loadUserData();
   }, [user]);
 
@@ -110,11 +129,11 @@ const EmployeeDashboard = () => {
     const inProgress = userTasks.filter(t => t.status === 'in corso').length;
     const assigned = userTasks.filter(t => t.status === 'assegnato').length;
     const overdue = userTasks.filter(isTaskOverdue).length;
-    
-    const completionRate = totalTasks > 0 
-      ? Math.round((completed / totalTasks) * 100) 
+
+    const completionRate = totalTasks > 0
+      ? Math.round((completed / totalTasks) * 100)
       : 0;
-    
+
     // Calcola task completati questa settimana
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -143,10 +162,10 @@ const EmployeeDashboard = () => {
   // MODIFICA 3: Task filtrati per status E modalità vista
   const filteredTasks = useMemo(() => {
     // Prima filtra per modalità vista
-    let filtered = viewMode === 'mine' 
+    let filtered = viewMode === 'mine'
       ? tasks.filter(task => task.assignedTo === user?.uid)
       : tasks;
-    
+
     // Poi filtra per status
     if (selectedStatus === 'tutti') return filtered;
     if (selectedStatus === 'overdue') return filtered.filter(isTaskOverdue);
@@ -163,7 +182,7 @@ const EmployeeDashboard = () => {
 
   const handleStatusChange = async (taskId, newStatus) => {
     try {
-      await updateTask(taskId, { 
+      await updateTask(taskId, {
         status: newStatus,
         ...(newStatus === 'completato' && { completedAt: new Date().toISOString() })
       });
@@ -185,9 +204,9 @@ const EmployeeDashboard = () => {
 
   // Formatta l'orario corrente
   const formatTime = (date) => {
-    return date.toLocaleTimeString('it-IT', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    return date.toLocaleTimeString('it-IT', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -265,7 +284,7 @@ const EmployeeDashboard = () => {
             </p>
           </div>
         </div>
-        
+
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
             onClick={() => navigate('/employee/create-task')}
@@ -289,7 +308,7 @@ const EmployeeDashboard = () => {
             <span style={{ fontSize: '16px' }}>➕</span>
             Nuovo Task
           </button>
-          
+
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => navigate('/employee/profile')}
@@ -319,7 +338,7 @@ const EmployeeDashboard = () => {
               Profilo
             </button>
           </div>
-          
+
           <button
             onClick={handleLogout}
             style={{
@@ -353,7 +372,7 @@ const EmployeeDashboard = () => {
 
       {/* Main Content */}
       <div style={{ padding: '30px', maxWidth: '1400px', margin: '0 auto' }}>
-        
+
         {/* Statistiche Rapide */}
         <div style={{
           display: 'grid',
@@ -362,45 +381,45 @@ const EmployeeDashboard = () => {
           marginBottom: '30px'
         }}>
           {[
-            { 
-              title: 'Task Totali', 
-              value: myStats.totalTasks, 
-              color: '#3b82f6', 
+            {
+              title: 'Task Totali',
+              value: myStats.totalTasks,
+              color: '#3b82f6',
               icon: '📋',
               subtitle: 'Assegnati a te',
               gradient: 'linear-gradient(135deg, #3b82f6, #60a5fa)'
             },
-            { 
-              title: 'Completati', 
-              value: myStats.completed, 
-              color: '#10b981', 
+            {
+              title: 'Completati',
+              value: myStats.completed,
+              color: '#10b981',
               icon: '✅',
               subtitle: `${myStats.completionRate}% completamento`,
               gradient: 'linear-gradient(135deg, #10b981, #34d399)'
             },
-            { 
-              title: 'In Lavorazione', 
-              value: myStats.inProgress, 
-              color: '#f59e0b', 
+            {
+              title: 'In Lavorazione',
+              value: myStats.inProgress,
+              color: '#f59e0b',
               icon: '🔄',
               subtitle: 'Task in corso',
               gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)'
             },
-            { 
-              title: 'Da Iniziare', 
-              value: myStats.assigned, 
-              color: '#8b5cf6', 
+            {
+              title: 'Da Iniziare',
+              value: myStats.assigned,
+              color: '#8b5cf6',
               icon: '⏳',
               subtitle: 'Assegnati',
               gradient: 'linear-gradient(135deg, #8b5cf6, #a78bfa)'
             },
-            { 
-              title: 'In Ritardo', 
-              value: myStats.overdue, 
-              color: myStats.overdue > 0 ? '#ef4444' : '#6b7280', 
+            {
+              title: 'In Ritardo',
+              value: myStats.overdue,
+              color: myStats.overdue > 0 ? '#ef4444' : '#6b7280',
               icon: '⚠️',
               subtitle: 'Da completare',
-              gradient: myStats.overdue > 0 
+              gradient: myStats.overdue > 0
                 ? 'linear-gradient(135deg, #ef4444, #f87171)'
                 : 'linear-gradient(135deg, #6b7280, #9ca3af)'
             }
@@ -446,7 +465,7 @@ const EmployeeDashboard = () => {
                 height: '4px',
                 background: stat.gradient
               }}></div>
-              
+
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '8px', fontWeight: '500' }}>
@@ -592,10 +611,10 @@ const EmployeeDashboard = () => {
                   </button>
                 </div>
               </div>
-              
+
               {filteredTasks.length === 0 ? (
-                <div style={{ 
-                  textAlign: 'center', 
+                <div style={{
+                  textAlign: 'center',
                   padding: '50px 20px',
                   backgroundColor: '#f9fafb',
                   borderRadius: '8px',
@@ -606,8 +625,8 @@ const EmployeeDashboard = () => {
                     Nessun task trovato
                   </p>
                   <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                    {viewMode === 'mine' 
-                      ? 'Non hai ancora task assegnati!' 
+                    {viewMode === 'mine'
+                      ? 'Non hai ancora task assegnati!'
                       : 'Non ci sono task in questa categoria'}
                   </p>
                   {viewMode === 'mine' && (
@@ -636,7 +655,7 @@ const EmployeeDashboard = () => {
                     const priorityColor = getPriorityColor(task.priority);
                     const statusColor = getStatusColor(task.status);
                     const isOwnTask = canModifyTask(task);
-                    
+
                     return (
                       <div
                         key={task.id || index}
@@ -674,7 +693,7 @@ const EmployeeDashboard = () => {
                           }}>
                             <span>{isOwnTask ? '👤 TUO' : `👥 Di ${task.assignedName || 'altro'}`}</span>
                           </div>
-                          
+
                           {/* Status Badge */}
                           <div style={{
                             padding: '4px 12px',
@@ -696,13 +715,13 @@ const EmployeeDashboard = () => {
                             {task.status?.toUpperCase()}
                           </div>
                         </div>
-                        
+
                         <div style={{ marginBottom: '16px' }}>
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                             <div style={{ flex: 1 }}>
-                              <h3 style={{ 
-                                fontSize: '16px', 
-                                fontWeight: '600', 
+                              <h3 style={{
+                                fontSize: '16px',
+                                fontWeight: '600',
                                 color: '#1f2937',
                                 marginBottom: '8px',
                                 lineHeight: '1.4'
@@ -719,20 +738,20 @@ const EmployeeDashboard = () => {
                                   </span>
                                 )}
                               </h3>
-                              
+
                               {task.description && (
-                                <p style={{ 
-                                  fontSize: '14px', 
+                                <p style={{
+                                  fontSize: '14px',
                                   color: '#6b7280',
                                   marginBottom: '12px',
                                   lineHeight: '1.5'
                                 }}>
-                                  {task.description.length > 100 
-                                    ? `${task.description.substring(0, 100)}...` 
+                                  {task.description.length > 100
+                                    ? `${task.description.substring(0, 100)}...`
                                     : task.description}
                                 </p>
                               )}
-                              
+
                               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
                                 {/* Priorità */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -746,32 +765,32 @@ const EmployeeDashboard = () => {
                                     {task.priority?.toUpperCase() || 'MEDIA'}
                                   </span>
                                 </div>
-                                
+
                                 {/* Scadenza */}
                                 {task.dueDate && (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span style={{ fontSize: '14px' }}>📅</span>
-                                    <span style={{ 
-                                      fontSize: '13px', 
+                                    <span style={{
+                                      fontSize: '13px',
                                       color: isOverdue ? '#ef4444' : '#6b7280',
                                       fontWeight: isOverdue ? '600' : '400'
                                     }}>
                                       {formatDate(task.dueDate)}
                                       {daysRemaining !== null && (
-                                        <span style={{ 
+                                        <span style={{
                                           marginLeft: '8px',
                                           padding: '2px 8px',
-                                          backgroundColor: isOverdue ? '#fee2e2' : 
-                                                         daysRemaining === 0 ? '#fef3c7' : '#dbeafe',
-                                          color: isOverdue ? '#dc2626' : 
-                                                daysRemaining === 0 ? '#92400e' : '#1e40af',
+                                          backgroundColor: isOverdue ? '#fee2e2' :
+                                            daysRemaining === 0 ? '#fef3c7' : '#dbeafe',
+                                          color: isOverdue ? '#dc2626' :
+                                            daysRemaining === 0 ? '#92400e' : '#1e40af',
                                           borderRadius: '4px',
                                           fontSize: '11px',
                                           fontWeight: '600'
                                         }}>
-                                          {isOverdue ? `RITARDO ${Math.abs(daysRemaining)}g` : 
-                                           daysRemaining === 0 ? 'OGGI' : 
-                                           `${daysRemaining}g`}
+                                          {isOverdue ? `RITARDO ${Math.abs(daysRemaining)}g` :
+                                            daysRemaining === 0 ? 'OGGI' :
+                                              `${daysRemaining}g`}
                                         </span>
                                       )}
                                     </span>
@@ -781,11 +800,11 @@ const EmployeeDashboard = () => {
                             </div>
                           </div>
                         </div>
-                        
+
                         {/* MODIFICA 6: Progresso e Azioni - disabilitati se non è suo */}
-                        <div style={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
                           alignItems: 'center',
                           paddingTop: '16px',
                           borderTop: '1px solid #e5e7eb'
@@ -794,10 +813,10 @@ const EmployeeDashboard = () => {
                           <div style={{ flex: 1, maxWidth: '250px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                               <span style={{ fontSize: '12px', color: '#6b7280' }}>Progresso</span>
-                              <span style={{ 
-                                fontSize: '12px', 
-                                color: isOwnTask ? '#3b82f6' : '#9ca3af', 
-                                fontWeight: '600' 
+                              <span style={{
+                                fontSize: '12px',
+                                color: isOwnTask ? '#3b82f6' : '#9ca3af',
+                                fontWeight: '600'
                               }}>
                                 {task.progress || 0}%
                               </span>
@@ -818,12 +837,12 @@ const EmployeeDashboard = () => {
                                 }}
                               />
                             </div>
-                            
+
                             {/* Pulsanti progresso - disabilitati se non è suo */}
                             {isOwnTask ? (
-                              <div style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
+                              <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
                                 marginTop: '8px'
                               }}>
                                 {[0, 25, 50, 75, 100].map(value => (
@@ -857,8 +876,8 @@ const EmployeeDashboard = () => {
                                 ))}
                               </div>
                             ) : (
-                              <div style={{ 
-                                fontSize: '11px', 
+                              <div style={{
+                                fontSize: '11px',
                                 color: '#9ca3af',
                                 marginTop: '8px',
                                 fontStyle: 'italic'
@@ -867,7 +886,7 @@ const EmployeeDashboard = () => {
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Select status - disabilitato se non è suo */}
                           {isOwnTask ? (
                             <select
@@ -928,10 +947,10 @@ const EmployeeDashboard = () => {
               boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               marginBottom: '20px'
             }}>
-              <h2 style={{ 
-                color: '#1f2937', 
-                fontSize: '18px', 
-                fontWeight: '600', 
+              <h2 style={{
+                color: '#1f2937',
+                fontSize: '18px',
+                fontWeight: '600',
                 marginBottom: '20px',
                 display: 'flex',
                 alignItems: 'center',
@@ -940,48 +959,48 @@ const EmployeeDashboard = () => {
                 <span style={{ fontSize: '20px' }}>⚡</span>
                 Accesso Rapido
               </h2>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {[
-                  { 
-                    icon: '📋', 
-                    label: 'I Miei Task', 
-                    desc: 'Gestisci tutti i tuoi task', 
+                  {
+                    icon: '📋',
+                    label: 'I Miei Task',
+                    desc: 'Gestisci tutti i tuoi task',
                     path: '/employee/tasks',
                     color: '#3b82f6'
                   },
-                  { 
-                    icon: '📊', 
-                    label: 'I Miei Report', 
-                    desc: 'Statistiche e performance', 
+                  {
+                    icon: '📊',
+                    label: 'I Miei Report',
+                    desc: 'Statistiche e performance',
                     path: '/employee/reports',
                     color: '#10b981'
                   },
-                  { 
-                    icon: '🗑️', 
-                    label: 'Cestino', 
-                    desc: 'Task eliminati di recente', 
+                  {
+                    icon: '🗑️',
+                    label: 'Cestino',
+                    desc: 'Task eliminati di recente',
                     path: '/employee/trash',
                     color: '#6b7280'
                   },
-                  { 
-                    icon: '👤', 
-                    label: 'Il Mio Profilo', 
-                    desc: 'Aggiorna informazioni personali', 
+                  {
+                    icon: '👤',
+                    label: 'Il Mio Profilo',
+                    desc: 'Aggiorna informazioni personali',
                     path: '/employee/profile',
                     color: '#8b5cf6'
                   },
-                  { 
-                    icon: '🔄', 
-                    label: 'Cronologia', 
-                    desc: 'Storico delle tue attività', 
+                  {
+                    icon: '🔄',
+                    label: 'Cronologia',
+                    desc: 'Storico delle tue attività',
                     path: '/employee/history',
                     color: '#f59e0b'
                   },
-                  { 
-                    icon: '💬', 
-                    label: 'Messaggi', 
-                    desc: 'Comunicazioni e notifiche', 
+                  {
+                    icon: '💬',
+                    label: 'Messaggi',
+                    desc: 'Comunicazioni e notifiche',
                     path: '/employee/messages',
                     color: '#ec4899'
                   }
@@ -1028,23 +1047,23 @@ const EmployeeDashboard = () => {
                       {item.icon}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ 
-                        fontSize: '15px', 
-                        fontWeight: '600', 
+                      <div style={{
+                        fontSize: '15px',
+                        fontWeight: '600',
                         color: '#1f2937',
                         marginBottom: '4px'
                       }}>
                         {item.label}
                       </div>
-                      <div style={{ 
-                        fontSize: '13px', 
+                      <div style={{
+                        fontSize: '13px',
                         color: '#6b7280',
                         lineHeight: '1.4'
                       }}>
                         {item.desc}
                       </div>
                     </div>
-                    <div style={{ 
+                    <div style={{
                       color: '#9ca3af',
                       fontSize: '14px',
                       opacity: 0
@@ -1064,10 +1083,10 @@ const EmployeeDashboard = () => {
               boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               marginBottom: '20px'
             }}>
-              <h2 style={{ 
-                color: '#1f2937', 
-                fontSize: '18px', 
-                fontWeight: '600', 
+              <h2 style={{
+                color: '#1f2937',
+                fontSize: '18px',
+                fontWeight: '600',
                 marginBottom: '20px',
                 display: 'flex',
                 alignItems: 'center',
@@ -1076,7 +1095,7 @@ const EmployeeDashboard = () => {
                 <span style={{ fontSize: '20px' }}>📈</span>
                 La Tua Performance
               </h2>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 {/* Progresso */}
                 <div>
@@ -1102,7 +1121,7 @@ const EmployeeDashboard = () => {
                     />
                   </div>
                 </div>
-                
+
                 {/* Metriche */}
                 {[
                   { label: 'Produttività Settimanale', value: `${myStats.completedThisWeek} task`, color: '#3b82f6' },
@@ -1110,8 +1129,8 @@ const EmployeeDashboard = () => {
                   { label: 'Task/Giorno', value: myStats.totalTasks > 0 ? (myStats.completed / 30).toFixed(1) : '0.0', color: '#8b5cf6' },
                   { label: 'Attività Recente', value: tasks.length > 0 ? formatDate(tasks[0].updatedAt || tasks[0].createdAt) : 'Nessuna', color: '#6b7280' }
                 ].map((metric, index) => (
-                  <div key={index} style={{ 
-                    display: 'flex', 
+                  <div key={index} style={{
+                    display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '12px',
@@ -1119,21 +1138,21 @@ const EmployeeDashboard = () => {
                     borderRadius: '8px'
                   }}>
                     <span style={{ fontSize: '14px', color: '#6b7280' }}>{metric.label}</span>
-                    <span style={{ 
-                      fontSize: '15px', 
-                      fontWeight: '600', 
-                      color: metric.color 
+                    <span style={{
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      color: metric.color
                     }}>
                       {metric.value}
                     </span>
                   </div>
                 ))}
               </div>
-              
+
               {/* Punteggio Complessivo */}
-              <div style={{ 
-                marginTop: '25px', 
-                paddingTop: '20px', 
+              <div style={{
+                marginTop: '25px',
+                paddingTop: '20px',
                 borderTop: '1px solid #e5e7eb',
                 textAlign: 'center'
               }}>
@@ -1143,12 +1162,12 @@ const EmployeeDashboard = () => {
                 <div style={{
                   fontSize: '28px',
                   fontWeight: '700',
-                  color: myStats.completionRate >= 80 ? '#10b981' : 
-                         myStats.completionRate >= 60 ? '#f59e0b' : '#ef4444',
+                  color: myStats.completionRate >= 80 ? '#10b981' :
+                    myStats.completionRate >= 60 ? '#f59e0b' : '#ef4444',
                   marginBottom: '6px'
                 }}>
-                  {myStats.completionRate >= 80 ? '👑 Eccellente' : 
-                   myStats.completionRate >= 60 ? '👍 Buono' : '📈 Da migliorare'}
+                  {myStats.completionRate >= 80 ? '👑 Eccellente' :
+                    myStats.completionRate >= 60 ? '👍 Buono' : '📈 Da migliorare'}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af' }}>
                   Basato su completamento e puntualità

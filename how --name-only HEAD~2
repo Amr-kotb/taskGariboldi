@@ -1,0 +1,8 @@
+[33mcommit c7451d619ff58027cc3f88364d5a5df793d938b2[m
+Author: Amr-kotb <akotb594@gmail.com>
+Date:   Fri Feb 13 17:35:41 2026 +0100
+
+    Test: hard-coded Firebase config
+
+src/pages/admin/AssignTask.css
+src/pages/admin/AssignTask.jsx

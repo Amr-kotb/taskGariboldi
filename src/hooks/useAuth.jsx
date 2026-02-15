@@ -10,6 +10,36 @@ import { authSyncService } from '../services/firebase/firestore.js';
 
 console.log('🔐 [useAuth] Import Firebase config');
 
+// 🔴 FUNZIONE PER ISOLARE LE TAB
+const forceSessionIsolation = () => {
+  // Genera un ID univoco per questa tab/scheda
+  const tabId = sessionStorage.getItem('tabId') || Math.random().toString(36).substring(2);
+  sessionStorage.setItem('tabId', tabId);
+  
+  // Pulisci localStorage all'avvio di ogni nuova tab
+  if (!sessionStorage.getItem('authInitialized')) {
+    console.log(`🧹 [Tab ${tabId}] Nuova tab rilevata, pulizia localStorage...`);
+    
+    // Rimuovi TUTTI i dati Firebase da localStorage
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => {
+      console.log(`   🗑️ Rimossa chiave: ${key}`);
+      localStorage.removeItem(key);
+    });
+    
+    sessionStorage.setItem('authInitialized', 'true');
+    console.log(`✅ [Tab ${tabId}] Pulizia completata, chiavi rimosse: ${keysToRemove.length}`);
+  }
+  
+  return tabId;
+};
+
 const AuthContext = createContext();
 
 export function useAuth() {
@@ -24,12 +54,13 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tabId] = useState(() => forceSessionIsolation());
 
-  console.log('🔐 [AuthProvider] Inizializzazione provider');
+  console.log(`🔐 [AuthProvider] Inizializzazione provider per tab: ${tabId}`);
 
   // Verifica che Firebase sia disponibile
   useEffect(() => {
-    console.log('🔍 [AuthProvider] Verifica configurazione Firebase...');
+    console.log(`🔍 [AuthProvider-${tabId}] Verifica configurazione Firebase...`);
     
     if (!auth) {
       const errorMsg = '❌ [AuthProvider] Auth service non disponibile';
@@ -39,33 +70,31 @@ export function AuthProvider({ children }) {
       return;
     }
     
-    console.log('✅ [AuthProvider] Firebase configurato correttamente');
-  }, []);
+    console.log(`✅ [AuthProvider-${tabId}] Firebase configurato correttamente`);
+  }, [tabId]);
 
   // Ascolta cambiamenti autenticazione
   useEffect(() => {
-    console.log('👂 [AuthProvider] Setup listener autenticazione');
+    console.log(`👂 [AuthProvider-${tabId}] Setup listener autenticazione`);
     
     if (!auth) {
-      console.error('❌ [AuthProvider] auth non disponibile per listener');
+      console.error(`❌ [AuthProvider-${tabId}] auth non disponibile per listener`);
       setLoading(false);
       return;
     }
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('🔄 [AuthProvider] Firebase auth state changed:', 
+      console.log(`🔄 [AuthProvider-${tabId}] Firebase auth state changed:`, 
         firebaseUser ? `Loggato: ${firebaseUser.email}` : 'Nessun utente');
       
       if (firebaseUser) {
         try {
           // SINCRONIZZA UTENTE CON FIRESTORE
-          console.log(`🔄 [AuthProvider] Sincronizzazione utente ${firebaseUser.email}...`);
+          console.log(`🔄 [AuthProvider-${tabId}] Sincronizzazione utente ${firebaseUser.email}...`);
           
-          const syncedUser = await authSyncService.syncUserToFirestore(firebaseUser, {
-            // Puoi passare dati aggiuntivi qui se disponibili
-          });
+          const syncedUser = await authSyncService.syncUserToFirestore(firebaseUser, {});
           
-          console.log('✅ [AuthProvider] Utente sincronizzato con Firestore');
+          console.log(`✅ [AuthProvider-${tabId}] Utente sincronizzato con Firestore`);
           
           // Crea oggetto utente completo con dati sincronizzati
           const userObj = {
@@ -78,20 +107,21 @@ export function AuthProvider({ children }) {
             isActive: syncedUser?.isActive !== false,
             lastLogin: syncedUser?.lastLogin || new Date().toISOString(),
             createdAt: syncedUser?.createdAt,
-            // Includi tutti i dati sincronizzati
             ...syncedUser
           };
           
-          console.log(`✅ [AuthProvider] Utente caricato:`, {
+          console.log(`✅ [AuthProvider-${tabId}] Utente caricato:`, {
             email: userObj.email,
             role: userObj.role,
             name: userObj.name
           });
           
+          // Salva l'ID della tab corrente per questa sessione
+          sessionStorage.setItem('currentUser', userObj.uid);
           setUser(userObj);
           
         } catch (error) {
-          console.error('❌ [AuthProvider] Errore sincronizzazione utente:', error);
+          console.error(`❌ [AuthProvider-${tabId}] Errore sincronizzazione utente:`, error);
           
           // Fallback: usa solo dati Authentication
           const userObj = {
@@ -105,11 +135,13 @@ export function AuthProvider({ children }) {
             lastLogin: new Date().toISOString()
           };
           
-          console.log('⚠️ [AuthProvider] Usando dati Authentication (fallback)');
+          console.log(`⚠️ [AuthProvider-${tabId}] Usando dati Authentication (fallback)`);
+          sessionStorage.setItem('currentUser', userObj.uid);
           setUser(userObj);
         }
       } else {
-        console.log('🚪 [AuthProvider] Nessun utente loggato');
+        console.log(`🚪 [AuthProvider-${tabId}] Nessun utente loggato`);
+        sessionStorage.removeItem('currentUser');
         setUser(null);
       }
       
@@ -117,16 +149,15 @@ export function AuthProvider({ children }) {
       setError('');
     });
 
-    // Cleanup
     return () => {
-      console.log('🧹 [AuthProvider] Cleanup listener autenticazione');
+      console.log(`🧹 [AuthProvider-${tabId}] Cleanup listener autenticazione`);
       unsubscribe();
     };
-  }, []);
+  }, [tabId]);
 
   // Login con Firebase
   const signIn = async (email, password) => {
-    console.log(`🔑 [AuthProvider] Tentativo login per:`, email);
+    console.log(`🔑 [AuthProvider-${tabId}] Tentativo login per:`, email);
     setError('');
     
     if (!auth) {
@@ -143,8 +174,20 @@ export function AuthProvider({ children }) {
     }
     
     try {
+      // 🔴 PULISCI TUTTO PRIMA DEL LOGIN
+      console.log(`🧹 [AuthProvider-${tabId}] Pulizia localStorage prima del login...`);
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      console.log(`✅ [AuthProvider-${tabId}] Pulite ${keysToRemove.length} chiavi`);
+      
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      console.log(`✅ [AuthProvider] Login Firebase riuscito per:`, email);
+      console.log(`✅ [AuthProvider-${tabId}] Login Firebase riuscito per:`, email);
       
       return { 
         success: true, 
@@ -165,7 +208,7 @@ export function AuthProvider({ children }) {
         default: errorMessage = error.message || 'Errore sconosciuto';
       }
       
-      console.log(`❌ [AuthProvider] Login fallito:`, errorMessage);
+      console.log(`❌ [AuthProvider-${tabId}] Login fallito:`, errorMessage);
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -173,7 +216,7 @@ export function AuthProvider({ children }) {
 
   // Registrazione utente
   const signUp = async (email, password, userData = {}) => {
-    console.log(`📝 [AuthProvider] Registrazione utente:`, email);
+    console.log(`📝 [AuthProvider-${tabId}] Registrazione utente:`, email);
     setError('');
     
     if (!auth) {
@@ -184,18 +227,16 @@ export function AuthProvider({ children }) {
     }
     
     try {
-      // Crea utente in Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      console.log(`✅ [AuthProvider] Utente creato in Authentication`);
+      console.log(`✅ [AuthProvider-${tabId}] Utente creato in Authentication`);
       
-      // Sincronizza con Firestore
       const syncedUser = await authSyncService.syncUserToFirestore(userCredential.user, {
         name: userData.name || email.split('@')[0],
         role: userData.role || 'dipendente',
         department: userData.department || 'Generale'
       });
       
-      console.log(`✅ [AuthProvider] Utente sincronizzato con Firestore`);
+      console.log(`✅ [AuthProvider-${tabId}] Utente sincronizzato con Firestore`);
       
       return { 
         success: true, 
@@ -215,7 +256,7 @@ export function AuthProvider({ children }) {
         default: errorMessage = error.message || 'Errore sconosciuto';
       }
       
-      console.log(`❌ [AuthProvider] Registrazione fallita:`, errorMessage);
+      console.log(`❌ [AuthProvider-${tabId}] Registrazione fallita:`, errorMessage);
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -223,20 +264,37 @@ export function AuthProvider({ children }) {
 
   // Logout
   const logout = async () => {
-    console.log(`🚪 [AuthProvider] Richiesta logout`);
-    
-    if (!auth) {
-      console.error('❌ [AuthProvider] auth non disponibile per logout');
-      return { success: false, error: 'Sistema di autenticazione non disponibile' };
-    }
+    console.log(`🚪 [AuthProvider-${tabId}] Richiesta logout`);
     
     try {
       await signOut(auth);
-      console.log(`✅ [AuthProvider] Logout riuscito`);
+      
+      // Pulisci localStorage
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('firebase') || key.includes('auth') || key.includes('user'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Pulisci sessionStorage (ma mantieni tabId)
+      const currentTabId = sessionStorage.getItem('tabId');
+      sessionStorage.clear();
+      if (currentTabId) {
+        sessionStorage.setItem('tabId', currentTabId);
+      }
+      
+      console.log(`✅ [AuthProvider-${tabId}] Logout riuscito, pulite ${keysToRemove.length} chiavi`);
+      
+      // FORZA il refresh della pagina
+      window.location.href = '/login';
+      
       return { success: true };
     } catch (error) {
       const errorMessage = 'Errore durante il logout';
-      console.error(`❌ [AuthProvider] Errore logout:`, error);
+      console.error(`❌ [AuthProvider-${tabId}] Errore logout:`, error);
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }
@@ -250,15 +308,15 @@ export function AuthProvider({ children }) {
     signUp,
     logout,
     isAuthenticated: !!user,
-    isAdmin: user?.role === 'admin',
-    isEmployee: user?.role === 'dipendente'
+    isAdmin: user?.role === 'admin' || user?.role === 'administrator' || user?.role === 'amministratore' || user?.role === 'superadmin',
+    isEmployee: user?.role === 'dipendente' || user?.role === 'employee' || user?.role === 'user' || user?.role === 'utente',
+    tabId
   };
 
-  console.log(`🎭 [AuthProvider] Contesto creato:`, {
+  console.log(`🎭 [AuthProvider-${tabId}] Contesto creato:`, {
     user: user ? `${user.name} (${user.role})` : 'null',
     loading,
-    isAuthenticated: !!user,
-    isAdmin: user?.role === 'admin'
+    isAuthenticated: !!user
   });
 
   return (
