@@ -25,24 +25,36 @@ export function useTasks() {
   const [storageAvailable, setStorageAvailable] = useState(!!storageService);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // Carica tutti i task (admin) - NON eliminati
-  const loadAllTasks = useCallback(async (filters = {}) => {
+  // ✅ Carica tutti i task (admin) - NON eliminati - CON CONTROLLO ERRORI
+  const loadAllTasks = useCallback(async (filters = {}, retryCount = 0) => {
+    // Evita troppi tentativi di ricarica
+    if (retryCount > 3) {
+      console.error('❌ [useTasks] Troppi tentativi di caricamento, fermo il loop');
+      setError('❌ Errore di caricamento: impossibile accedere ai dati. Verifica i permessi.');
+      setLoading(false);
+      return [];
+    }
+
     setLoading(true);
     setError(null);
 
     try {
       console.log('📋 [useTasks] Caricamento task con filtri:', filters);
 
-      let q = query(collection(db, 'tasks'));
+      // Verifica che db sia definito
+      if (!db) {
+        throw new Error('Database non disponibile');
+      }
 
-      const conditions = [where('deleted', '==', false)];
+      const tasksRef = collection(db, 'tasks');
+      let conditions = [where('deleted', '==', false)];
 
       if (filters.status) conditions.push(where('status', '==', filters.status));
       if (filters.priority) conditions.push(where('priority', '==', filters.priority));
       if (filters.assignedTo) conditions.push(where('assignedTo', '==', filters.assignedTo));
 
       conditions.push(orderBy('createdAt', 'desc'));
-      q = query(q, ...conditions);
+      const q = query(tasksRef, ...conditions);
 
       const snapshot = await getDocs(q);
       const tasksList = snapshot.docs.map(doc => ({
@@ -57,14 +69,23 @@ export function useTasks() {
       return tasksList;
     } catch (err) {
       console.error('❌ [useTasks] Errore caricamento task:', err);
-      setError(err.message);
+      
+      // Gestione specifica degli errori
+      if (err.code === 'permission-denied' || err.message.includes('Missing or insufficient permissions')) {
+        setError('❌ Permessi insufficienti per caricare i task. Contatta l\'amministratore.');
+      } else if (err.code === 'unavailable' || err.message.includes('network')) {
+        setError('❌ Errore di connessione. Verifica la rete.');
+      } else {
+        setError(err.message);
+      }
+      
       return [];
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // 🔥 FUNZIONE REAL-TIME PER I TASK DELL'UTENTE
+  // 🔥 FUNZIONE REAL-TIME PER I TASK DELL'UTENTE - CON GESTIONE ERRORI
   const subscribeToUserTasks = useCallback((userId, onUpdate) => {
     if (!userId) {
       console.warn('⚠️ subscribeToUserTasks chiamato senza userId');
@@ -73,69 +94,104 @@ export function useTasks() {
 
     console.log('🔌 [useTasks] ATTIVAZIONE REAL-TIME per utente:', userId);
 
-    const tasksRef = collection(db, 'tasks');
-    const q = query(
-      tasksRef,
-      where('assignedTo', '==', userId),
-      where('deleted', '==', false),
-      orderBy('createdAt', 'desc')
-    );
+    try {
+      const tasksRef = collection(db, 'tasks');
+      const q = query(
+        tasksRef,
+        where('assignedTo', '==', userId),
+        where('deleted', '==', false),
+        orderBy('createdAt', 'desc')
+      );
 
-    // Sottoscrizione real-time - SI AGGIORNA AUTOMATICAMENTE!
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const updatedTasks = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-        updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
-      }));
+      // Sottoscrizione real-time - SI AGGIORNA AUTOMATICAMENTE!
+      const unsubscribe = onSnapshot(q, 
+        // Success callback
+        (snapshot) => {
+          const updatedTasks = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+            updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
+          }));
 
-      console.log('🔄 [useTasks] REAL-TIME: Task aggiornati!', updatedTasks.length);
-      setTasks(updatedTasks);
-      setLastUpdate(new Date());
-      
-      if (onUpdate) onUpdate(updatedTasks);
-    }, (error) => {
-      console.error('❌ [useTasks] Errore real-time:', error);
+          console.log('🔄 [useTasks] REAL-TIME: Task aggiornati!', updatedTasks.length);
+          setTasks(updatedTasks);
+          setLastUpdate(new Date());
+          setError(null); // Resetta l'errore se la connessione funziona
+          
+          if (onUpdate) onUpdate(updatedTasks);
+        }, 
+        // Error callback
+        (error) => {
+          console.error('❌ [useTasks] Errore real-time:', error);
+          
+          // Gestione specifica degli errori
+          if (error.code === 'permission-denied') {
+            setError('❌ Permessi insufficienti per gli aggiornamenti in tempo reale.');
+          } else {
+            setError(error.message);
+          }
+        }
+      );
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('❌ [useTasks] Errore setup real-time:', error);
       setError(error.message);
-    });
-
-    return unsubscribe; // Restituisce la funzione per pulire
+      return () => {};
+    }
   }, []);
 
-  // 🔥 FUNZIONE REAL-TIME PER ADMIN (TUTTI I TASK)
+  // 🔥 FUNZIONE REAL-TIME PER ADMIN (TUTTI I TASK) - CON GESTIONE ERRORI
   const subscribeToAllTasks = useCallback((filters = {}, onUpdate) => {
     console.log('🔌 [useTasks] ATTIVAZIONE REAL-TIME per ADMIN');
 
-    const tasksRef = collection(db, 'tasks');
-    let conditions = [where('deleted', '==', false)];
+    try {
+      const tasksRef = collection(db, 'tasks');
+      let conditions = [where('deleted', '==', false)];
 
-    if (filters.status) conditions.push(where('status', '==', filters.status));
-    if (filters.priority) conditions.push(where('priority', '==', filters.priority));
-    if (filters.assignedTo) conditions.push(where('assignedTo', '==', filters.assignedTo));
+      if (filters.status) conditions.push(where('status', '==', filters.status));
+      if (filters.priority) conditions.push(where('priority', '==', filters.priority));
+      if (filters.assignedTo) conditions.push(where('assignedTo', '==', filters.assignedTo));
 
-    conditions.push(orderBy('createdAt', 'desc'));
-    const q = query(tasksRef, ...conditions);
+      conditions.push(orderBy('createdAt', 'desc'));
+      const q = query(tasksRef, ...conditions);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const updatedTasks = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-        updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
-      }));
+      const unsubscribe = onSnapshot(q, 
+        // Success callback
+        (snapshot) => {
+          const updatedTasks = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+            updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt
+          }));
 
-      console.log('🔄 [useTasks] REAL-TIME ADMIN: Task aggiornati!', updatedTasks.length);
-      setTasks(updatedTasks);
-      setLastUpdate(new Date());
-      
-      if (onUpdate) onUpdate(updatedTasks);
-    }, (error) => {
-      console.error('❌ [useTasks] Errore real-time admin:', error);
+          console.log('🔄 [useTasks] REAL-TIME ADMIN: Task aggiornati!', updatedTasks.length);
+          setTasks(updatedTasks);
+          setLastUpdate(new Date());
+          setError(null);
+          
+          if (onUpdate) onUpdate(updatedTasks);
+        },
+        // Error callback
+        (error) => {
+          console.error('❌ [useTasks] Errore real-time admin:', error);
+          
+          if (error.code === 'permission-denied') {
+            setError('❌ Permessi insufficienti per gli aggiornamenti in tempo reale.');
+          } else {
+            setError(error.message);
+          }
+        }
+      );
+
+      return unsubscribe;
+    } catch (error) {
+      console.error('❌ [useTasks] Errore setup real-time admin:', error);
       setError(error.message);
-    });
-
-    return unsubscribe;
+      return () => {};
+    }
   }, []);
 
   // Crea nuovo task - VERSIONE COMPATIBILE
@@ -235,6 +291,16 @@ export function useTasks() {
 
     } catch (err) {
       console.error('❌ [useTasks] Errore creazione task:', err);
+      
+      // Gestione specifica errori di creazione
+      if (err.code === 'permission-denied') {
+        setError('❌ Permessi insufficienti per creare task.');
+        return { 
+          success: false, 
+          error: 'Permessi insufficienti',
+          storageAvailable: !!storageService 
+        };
+      }
 
       // Fallback: salva in localStorage
       const mockTask = {
@@ -256,13 +322,21 @@ export function useTasks() {
         taskId: mockTask.id,
         attachmentsCount: 0,
         storageAvailable: false,
-        message: 'Task salvato localmente'
+        message: 'Task salvato localmente (offline)'
       };
     }
   }, []);
 
   // Carica task per utente corrente (dipendente)
-  const loadUserTasks = useCallback(async (userId, includeDeleted = false) => {
+  const loadUserTasks = useCallback(async (userId, includeDeleted = false, retryCount = 0) => {
+    // Evita troppi tentativi di ricarica
+    if (retryCount > 3) {
+      console.error('❌ [useTasks] Troppi tentativi di caricamento per utente');
+      setError('❌ Errore di caricamento: impossibile accedere ai dati.');
+      setLoading(false);
+      return [];
+    }
+
     setLoading(true);
     setError(null);
 
@@ -292,7 +366,13 @@ export function useTasks() {
       return tasksList;
     } catch (err) {
       console.error('❌ [useTasks] Errore caricamento task utente:', err);
-      setError(err.message);
+      
+      if (err.code === 'permission-denied') {
+        setError('❌ Permessi insufficienti per caricare i tuoi task.');
+      } else {
+        setError(err.message);
+      }
+      
       return [];
     } finally {
       setLoading(false);
@@ -320,6 +400,12 @@ export function useTasks() {
       return { success: true };
     } catch (err) {
       console.error('❌ [useTasks] Errore aggiornamento task:', err);
+      
+      if (err.code === 'permission-denied') {
+        setError('❌ Permessi insufficienti per modificare questo task.');
+        return { success: false, error: 'Permessi insufficienti' };
+      }
+      
       setError(err.message);
       return { success: false, error: err.message };
     }
@@ -370,6 +456,12 @@ export function useTasks() {
       };
     } catch (err) {
       console.error('❌ [useTasks] Errore spostamento nel cestino:', err);
+      
+      if (err.code === 'permission-denied') {
+        setError('❌ Permessi insufficienti per eliminare questo task.');
+        return { success: false, error: 'Permessi insufficienti' };
+      }
+      
       setError(err.message);
       return {
         success: false,
@@ -507,7 +599,15 @@ export function useTasks() {
   }, []);
 
   // Carica task eliminati
-  const loadDeletedTasks = useCallback(async (userId = 'all') => {
+  const loadDeletedTasks = useCallback(async (userId = 'all', retryCount = 0) => {
+    // Evita troppi tentativi di ricarica
+    if (retryCount > 3) {
+      console.error('❌ [useTasks] Troppi tentativi di caricamento task eliminati');
+      setError('❌ Errore di caricamento: impossibile accedere al cestino.');
+      setLoading(false);
+      return [];
+    }
+
     setLoading(true);
     setError(null);
 
@@ -535,7 +635,13 @@ export function useTasks() {
       return deletedList;
     } catch (err) {
       console.error('❌ [useTasks] Errore caricamento task eliminati:', err);
-      setError(err.message);
+      
+      if (err.code === 'permission-denied') {
+        setError('❌ Permessi insufficienti per visualizzare il cestino.');
+      } else {
+        setError(err.message);
+      }
+      
       return [];
     } finally {
       setLoading(false);

@@ -40,12 +40,15 @@ try {
 const db = getFirestore(app);
 
 // ⏱️ COMPONENTE TIMER DEFINITIVO (SENZA ERRORI)
-const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
+const AutoUpdateTimer = ({ lastUpdate, onRefresh, isRefreshing: externalRefreshing }) => {
   const [timeToNextUpdate, setTimeToNextUpdate] = useState(300); // 5 minuti
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [internalRefreshing, setInternalRefreshing] = useState(false);
   const UPDATE_INTERVAL = 300; // 5 minuti in secondi
   const timerRef = useRef(null);
   const isMounted = useRef(true);
+
+  // Usa lo stato esterno se fornito, altrimenti quello interno
+  const refreshing = externalRefreshing !== undefined ? externalRefreshing : internalRefreshing;
 
   // Pulisci il timer quando il componente viene smontato
   useEffect(() => {
@@ -74,13 +77,13 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
       setTimeToNextUpdate(prev => {
         if (prev <= 1) {
           // Quando arriva a 0, fa l'aggiornamento (solo se non sta già aggiornando)
-          if (!isRefreshing && isMounted.current) {
-            setIsRefreshing(true);
+          if (!refreshing && isMounted.current) {
+            setInternalRefreshing(true);
             
             // Esegui l'aggiornamento
             onRefresh().finally(() => {
               if (isMounted.current) {
-                setIsRefreshing(false);
+                setInternalRefreshing(false);
                 setTimeToNextUpdate(UPDATE_INTERVAL);
               }
             });
@@ -97,7 +100,7 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
         timerRef.current = null;
       }
     };
-  }, [onRefresh, isRefreshing]);
+  }, [onRefresh, refreshing]);
 
   // Formatta il timer in mm:ss
   const formatTimer = (seconds) => {
@@ -108,12 +111,12 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
 
   // Gestione aggiornamento manuale
   const handleManualRefresh = () => {
-    if (isRefreshing) return;
+    if (refreshing) return;
     
-    setIsRefreshing(true);
+    setInternalRefreshing(true);
     onRefresh().finally(() => {
       if (isMounted.current) {
-        setIsRefreshing(false);
+        setInternalRefreshing(false);
         setTimeToNextUpdate(UPDATE_INTERVAL);
       }
     });
@@ -136,15 +139,15 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
         width: '32px',
         height: '32px',
         borderRadius: '50%',
-        backgroundColor: isRefreshing ? '#059669' : '#0369a1',
+        backgroundColor: refreshing ? '#059669' : '#0369a1',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: 'white',
         fontSize: '16px',
-        animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
+        animation: refreshing ? 'spin 1s linear infinite' : 'none'
       }}>
-        {isRefreshing ? '🔄' : '⏱️'}
+        {refreshing ? '🔄' : '⏱️'}
       </div>
 
       {/* Informazioni timer */}
@@ -155,7 +158,7 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
           fontWeight: '600',
           marginBottom: '2px'
         }}>
-          {isRefreshing ? 'AGGIORNAMENTO IN CORSO...' : 'PROSSIMO AGGIORNAMENTO'}
+          {refreshing ? 'AGGIORNAMENTO IN CORSO...' : 'PROSSIMO AGGIORNAMENTO'}
         </div>
         <div style={{
           display: 'flex',
@@ -168,41 +171,41 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
             color: '#0c4a6e',
             fontFamily: 'monospace'
           }}>
-            {isRefreshing ? '--:--' : formatTimer(timeToNextUpdate)}
+            {refreshing ? '--:--' : formatTimer(timeToNextUpdate)}
           </span>
           <button
             onClick={handleManualRefresh}
-            disabled={isRefreshing}
+            disabled={refreshing}
             style={{
               padding: '4px 12px',
-              backgroundColor: isRefreshing ? '#9ca3af' : '#0369a1',
+              backgroundColor: refreshing ? '#9ca3af' : '#0369a1',
               color: 'white',
               border: 'none',
               borderRadius: '20px',
               fontSize: '12px',
               fontWeight: '600',
-              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+              cursor: refreshing ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
               transition: 'all 0.2s ease',
-              opacity: isRefreshing ? 0.7 : 1
+              opacity: refreshing ? 0.7 : 1
             }}
             onMouseEnter={(e) => {
-              if (!isRefreshing) {
+              if (!refreshing) {
                 e.currentTarget.style.backgroundColor = '#0284c7';
                 e.currentTarget.style.transform = 'scale(1.05)';
               }
             }}
             onMouseLeave={(e) => {
-              if (!isRefreshing) {
+              if (!refreshing) {
                 e.currentTarget.style.backgroundColor = '#0369a1';
                 e.currentTarget.style.transform = 'scale(1)';
               }
             }}
           >
             <span>🔄</span>
-            {isRefreshing ? '...' : 'Aggiorna'}
+            {refreshing ? '...' : 'Aggiorna'}
           </button>
         </div>
       </div>
@@ -235,7 +238,9 @@ const AdminDashboard = () => {
     restoreTask,
     deletePermanently,
     emptyTrash,
-    loading: tasksLoading 
+    loading: tasksLoading,
+    error: tasksError,
+    subscribeToAllTasks
   } = useTasks();
   
   // State Organizzato
@@ -250,6 +255,7 @@ const AdminDashboard = () => {
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [quickStats, setQuickStats] = useState({
     pendingTasks: 0,
     urgentTasks: 0,
@@ -442,9 +448,51 @@ const AdminDashboard = () => {
     }
     
     setIsRefreshing(true);
+    setError(null);
     console.log('🔄 [AdminDashboard] Aggiornamento dati...');
     
     try {
+      // Timeout per evitare attese infinite
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout aggiornamento')), 30000)
+      );
+      
+      await Promise.race([
+        loadAllData(),
+        timeoutPromise
+      ]);
+      
+      setLastUpdate(new Date());
+      setRetryCount(0); // Reset contatore tentativi
+      console.log('✅ [AdminDashboard] Aggiornamento completato');
+    } catch (error) {
+      console.error('❌ [AdminDashboard] Errore aggiornamento:', error);
+      
+      // Incrementa contatore tentativi
+      setRetryCount(prev => prev + 1);
+      
+      // Se supera 3 tentativi, mostra errore e ferma
+      if (retryCount >= 3) {
+        setError('❌ Troppi tentativi di aggiornamento. Verifica i permessi o la connessione.');
+      } else {
+        setError(`Errore durante l'aggiornamento: ${error.message}`);
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [loadAllData, isRefreshing, retryCount]);
+
+  // Carica dati completi
+  const loadAllData = useCallback(async () => {
+    if (!db) {
+      setError('Database non disponibile');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log('📊 Caricamento dati dashboard admin...');
+      
       // Carica utenti
       const usersCollection = collection(db, 'users');
       const usersSnapshot = await getDocs(usersCollection);
@@ -453,29 +501,47 @@ const AdminDashboard = () => {
         ...doc.data() 
       }));
       
-      // Carica task globali
-      await loadAllTasks();
+      // Carica task globali - con gestione errore
+      let tasksList = [];
+      try {
+        await loadAllTasks();
+        tasksList = tasks;
+      } catch (taskError) {
+        console.error('❌ Errore caricamento task:', taskError);
+        setError('Impossibile caricare i task. Verifica i permessi.');
+      }
       
       // Carica task eliminati globali
-      await loadDeletedTasks('all');
+      let deletedList = [];
+      try {
+        await loadDeletedTasks('all');
+        deletedList = deletedTasks;
+      } catch (deletedError) {
+        console.error('❌ Errore caricamento task eliminati:', deletedError);
+      }
       
       // Carica attività recenti
-      const activitiesCollection = collection(db, 'activities');
-      const activitiesSnapshot = await getDocs(
-        query(activitiesCollection, orderBy('timestamp', 'desc'), limit(10))
-      );
-      const activitiesList = activitiesSnapshot.docs
-        .map(doc => ({ 
-          id: doc.id, 
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
-        }));
+      let activitiesList = [];
+      try {
+        const activitiesCollection = collection(db, 'activities');
+        const activitiesSnapshot = await getDocs(
+          query(activitiesCollection, orderBy('timestamp', 'desc'), limit(10))
+        );
+        activitiesList = activitiesSnapshot.docs
+          .map(doc => ({ 
+            id: doc.id, 
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
+          }));
+      } catch (activityError) {
+        console.error('❌ Errore caricamento attività:', activityError);
+      }
       
       // Calcola statistiche dettagliate
-      const stats = calculateStats(tasks, deletedTasks, usersList);
+      const stats = calculateStats(tasksList, deletedList, usersList);
       
       // Calcola statistiche rapide
-      const quickStatsData = calculateQuickStats(tasks, usersList);
+      const quickStatsData = calculateQuickStats(tasksList, usersList);
       
       // Carica stato sistema
       const systemStatus = await loadSystemStatus();
@@ -488,16 +554,20 @@ const AdminDashboard = () => {
       });
       
       setQuickStats(quickStatsData);
-      setLastUpdate(new Date());
       
-      console.log('✅ [AdminDashboard] Aggiornamento completato');
+      console.log('✅ Dati dashboard caricati:', {
+        tasks: tasksList.length,
+        deletedTasks: deletedList.length,
+        users: usersList.length
+      });
+      
     } catch (error) {
-      console.error('❌ [AdminDashboard] Errore aggiornamento:', error);
-      setError(`Errore nell'aggiornamento dei dati: ${error.message}`);
+      console.error('❌ Errore caricamento dashboard:', error);
+      setError(`Errore nel caricamento dei dati: ${error.message}`);
     } finally {
-      setIsRefreshing(false);
+      setLoading(false);
     }
-  }, [loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats, isRefreshing]);
+  }, [loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats]);
 
   // Carica dati iniziali (UNA SOLA VOLTA)
   useEffect(() => {
@@ -513,7 +583,7 @@ const AdminDashboard = () => {
       }
 
       try {
-        console.log('📊 Caricamento dati dashboard admin...');
+        console.log('📊 Caricamento iniziale dashboard admin...');
         
         // Carica utenti
         const usersCollection = collection(db, 'users');
@@ -561,6 +631,7 @@ const AdminDashboard = () => {
           setQuickStats(quickStatsData);
           setLastUpdate(new Date());
           setLoading(false);
+          setError(null);
         }
         
         console.log('✅ Dati dashboard caricati:', {
@@ -572,7 +643,7 @@ const AdminDashboard = () => {
       } catch (error) {
         console.error('❌ Errore caricamento dashboard:', error);
         if (isMounted) {
-          setError(`Errore nel caricamento dei dati: ${error.message}`);
+          setError(`❌ Errore nel caricamento dei dati: ${error.message}`);
           setLoading(false);
         }
       }
@@ -584,6 +655,23 @@ const AdminDashboard = () => {
       isMounted = false;
     };
   }, [user, loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats]);
+
+  // 🔥 Setup real-time updates
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+
+    console.log('🔌 [AdminDashboard] Attivazione real-time updates');
+    
+    const unsubscribe = subscribeToAllTasks({}, (updatedTasks) => {
+      console.log('📦 [AdminDashboard] Task aggiornati in tempo reale:', updatedTasks.length);
+      setLastUpdate(new Date());
+    });
+
+    return () => {
+      console.log('🔌 [AdminDashboard] Disattivazione real-time updates');
+      unsubscribe();
+    };
+  }, [user, subscribeToAllTasks]);
 
   // Calcola statistiche dettagliate
   const calculateStats = useCallback((tasksList, deletedList, users) => {
@@ -732,6 +820,65 @@ const AdminDashboard = () => {
     }
   };
 
+  // Gestione errori di permessi
+  if (tasksError && tasksError.includes('Missing or insufficient permissions')) {
+    return (
+      <div className="permission-error" style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#f8fafc',
+        padding: '20px',
+        textAlign: 'center'
+      }}>
+        <div style={{ fontSize: '64px', marginBottom: '20px' }}>🔒</div>
+        <h1 style={{ fontSize: '28px', color: '#1f2937', marginBottom: '16px' }}>
+          Errore di Permessi
+        </h1>
+        <p style={{ fontSize: '16px', color: '#6b7280', maxWidth: '500px', marginBottom: '24px' }}>
+          Non hai i permessi necessari per accedere ai dati. Questo potrebbe essere dovuto a:
+        </p>
+        <ul style={{ textAlign: 'left', color: '#4b5563', marginBottom: '24px' }}>
+          <li>🔹 Regole di Firestore non configurate correttamente</li>
+          <li>🔹 Account senza privilegi di amministratore</li>
+          <li>🔹 Sessione scaduta</li>
+        </ul>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '16px'
+            }}
+          >
+            🔄 Ricarica
+          </button>
+          <button
+            onClick={handleLogout}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#f3f4f6',
+              color: '#374151',
+              border: '1px solid #d1d5db',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '16px'
+            }}
+          >
+            🚪 Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Loading State
   if (loading && tasks.length === 0) {
     return (
@@ -779,8 +926,12 @@ const AdminDashboard = () => {
           </div>
           
           <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* ⏱️ TIMER FISSATO */}
-            <AutoUpdateTimer lastUpdate={lastUpdate} onRefresh={refreshData} />
+            {/* ⏱️ TIMER CON GESTIONE ERRORI */}
+            <AutoUpdateTimer 
+              lastUpdate={lastUpdate} 
+              onRefresh={refreshData}
+              isRefreshing={isRefreshing}
+            />
             
             <button
               onClick={() => navigate('/admin/trash')}
@@ -829,6 +980,20 @@ const AdminDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="error-banner">
+            <div className="error-icon">⚠️</div>
+            <div className="error-message">{error}</div>
+            <button
+              onClick={() => setError(null)}
+              className="error-close"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         {/* Statistiche Grid */}
         <div className="stats-grid">
@@ -1096,20 +1261,6 @@ const AdminDashboard = () => {
             </div>
           </div>
         </div>
-
-        {/* Error Display */}
-        {error && (
-          <div className="error-banner">
-            <div className="error-icon">⚠️</div>
-            <div className="error-message">{error}</div>
-            <button
-              onClick={() => setError(null)}
-              className="error-close"
-            >
-              ×
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Footer */}
