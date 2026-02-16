@@ -2,9 +2,10 @@
   command = "npm run build"
   functions = "netlify/functions"
   publish = "dist"
+  environment = { NODE_VERSION = "20" }
 
 [build.environment]
-  NODE_VERSION = "18"
+  NODE_VERSION = "20"
 
 [[redirects]]
   from = "/*"
