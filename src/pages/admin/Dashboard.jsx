@@ -1,17 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth.jsx';
 import { useTasks } from '../../hooks/useTasks.jsx';
-import {
-  getFirestore,
-  collection,
-  getDocs,
-  query,
+import { 
+  getFirestore, 
+  collection, 
+  getDocs, 
+  query, 
   orderBy,
   where,
-  limit,
-  doc,
-  getDoc
+  limit
 } from 'firebase/firestore';
 import { getApp, getApps, initializeApp } from 'firebase/app';
 
@@ -22,7 +20,7 @@ const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,  
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
@@ -41,23 +39,50 @@ try {
 
 const db = getFirestore(app);
 
-// ⏱️ COMPONENTE TIMER PER IL DASHBOARD
+// ⏱️ COMPONENTE TIMER DEFINITIVO (SENZA ERRORI)
 const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
-  const [timeToNextUpdate, setTimeToNextUpdate] = useState(300); // 5 minuti in secondi
-  const [refreshing, setRefreshing] = useState(false);
-  const UPDATE_INTERVAL = 300; // 5 minuti
+  const [timeToNextUpdate, setTimeToNextUpdate] = useState(300); // 5 minuti
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const UPDATE_INTERVAL = 300; // 5 minuti in secondi
+  const timerRef = useRef(null);
+  const isMounted = useRef(true);
 
-  // Timer countdown
+  // Pulisci il timer quando il componente viene smontato
   useEffect(() => {
-    const timerId = setInterval(() => {
+    isMounted.current = true;
+    
+    return () => {
+      isMounted.current = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Avvia il timer
+  useEffect(() => {
+    // Se c'è già un timer, puliscilo
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    // Nuovo timer
+    timerRef.current = setInterval(() => {
+      if (!isMounted.current) return;
+
       setTimeToNextUpdate(prev => {
         if (prev <= 1) {
-          // Quando arriva a 0, fa l'aggiornamento
-          if (!refreshing) {
-            setRefreshing(true);
+          // Quando arriva a 0, fa l'aggiornamento (solo se non sta già aggiornando)
+          if (!isRefreshing && isMounted.current) {
+            setIsRefreshing(true);
+            
+            // Esegui l'aggiornamento
             onRefresh().finally(() => {
-              setRefreshing(false);
-              setTimeToNextUpdate(UPDATE_INTERVAL);
+              if (isMounted.current) {
+                setIsRefreshing(false);
+                setTimeToNextUpdate(UPDATE_INTERVAL);
+              }
             });
           }
           return UPDATE_INTERVAL;
@@ -66,14 +91,32 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
       });
     }, 1000);
 
-    return () => clearInterval(timerId);
-  }, [onRefresh, refreshing]);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [onRefresh, isRefreshing]);
 
   // Formatta il timer in mm:ss
   const formatTimer = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // Gestione aggiornamento manuale
+  const handleManualRefresh = () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    onRefresh().finally(() => {
+      if (isMounted.current) {
+        setIsRefreshing(false);
+        setTimeToNextUpdate(UPDATE_INTERVAL);
+      }
+    });
   };
 
   return (
@@ -93,15 +136,15 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
         width: '32px',
         height: '32px',
         borderRadius: '50%',
-        backgroundColor: '#0369a1',
+        backgroundColor: isRefreshing ? '#059669' : '#0369a1',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         color: 'white',
         fontSize: '16px',
-        animation: refreshing ? 'spin 1s linear infinite' : 'pulse 2s infinite'
+        animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
       }}>
-        {refreshing ? '🔄' : '⏱️'}
+        {isRefreshing ? '🔄' : '⏱️'}
       </div>
 
       {/* Informazioni timer */}
@@ -112,7 +155,7 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
           fontWeight: '600',
           marginBottom: '2px'
         }}>
-          {refreshing ? 'AGGIORNAMENTO IN CORSO...' : 'PROSSIMO AGGIORNAMENTO'}
+          {isRefreshing ? 'AGGIORNAMENTO IN CORSO...' : 'PROSSIMO AGGIORNAMENTO'}
         </div>
         <div style={{
           display: 'flex',
@@ -125,47 +168,41 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
             color: '#0c4a6e',
             fontFamily: 'monospace'
           }}>
-            {refreshing ? '--:--' : formatTimer(timeToNextUpdate)}
+            {isRefreshing ? '--:--' : formatTimer(timeToNextUpdate)}
           </span>
           <button
-            onClick={() => {
-              setRefreshing(true);
-              onRefresh().finally(() => {
-                setRefreshing(false);
-                setTimeToNextUpdate(UPDATE_INTERVAL);
-              });
-            }}
-            disabled={refreshing}
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
             style={{
               padding: '4px 12px',
-              backgroundColor: refreshing ? '#9ca3af' : '#0369a1',
+              backgroundColor: isRefreshing ? '#9ca3af' : '#0369a1',
               color: 'white',
               border: 'none',
               borderRadius: '20px',
               fontSize: '12px',
               fontWeight: '600',
-              cursor: refreshing ? 'not-allowed' : 'pointer',
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
               transition: 'all 0.2s ease',
-              opacity: refreshing ? 0.7 : 1
+              opacity: isRefreshing ? 0.7 : 1
             }}
             onMouseEnter={(e) => {
-              if (!refreshing) {
+              if (!isRefreshing) {
                 e.currentTarget.style.backgroundColor = '#0284c7';
                 e.currentTarget.style.transform = 'scale(1.05)';
               }
             }}
             onMouseLeave={(e) => {
-              if (!refreshing) {
+              if (!isRefreshing) {
                 e.currentTarget.style.backgroundColor = '#0369a1';
                 e.currentTarget.style.transform = 'scale(1)';
               }
             }}
           >
             <span>🔄</span>
-            {refreshing ? '...' : 'Aggiorna'}
+            {isRefreshing ? '...' : 'Aggiorna'}
           </button>
         </div>
       </div>
@@ -190,17 +227,17 @@ const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const {
-    tasks,
-    deletedTasks,
-    loadAllTasks,
+  const { 
+    tasks, 
+    deletedTasks, 
+    loadAllTasks, 
     loadDeletedTasks,
     restoreTask,
     deletePermanently,
     emptyTrash,
-    loading: tasksLoading
+    loading: tasksLoading 
   } = useTasks();
-
+  
   // State Organizzato
   const [dashboardData, setDashboardData] = useState({
     users: [],
@@ -208,11 +245,11 @@ const AdminDashboard = () => {
     stats: {},
     systemStatus: {}
   });
-
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [quickStats, setQuickStats] = useState({
     pendingTasks: 0,
     urgentTasks: 0,
@@ -222,88 +259,88 @@ const AdminDashboard = () => {
 
   // Quick Actions Configuration
   const quickActions = [
-    {
-      id: 'statistics',
-      title: '📊 Statistiche',
-      description: 'Analisi dettagliate e report',
-      link: '/admin/stats',
-      icon: '📊',
-      color: 'blue',
-      badge: 'Analytics'
-    },
-    {
-      id: 'users',
-      title: '👥 Gestione Utenti',
-      description: 'Gestisci tutti gli utenti del sistema',
-      link: '/admin/users',
-      icon: '👥',
-      color: 'green',
-      badge: 'Admin'
-    },
-    {
-      id: 'tasks',
-      title: '📋 Gestione Task',
-      description: 'Visualizza e modifica tutti i task',
-      link: '/admin/tasks',
-      icon: '📋',
-      color: 'purple',
-      badge: 'Manage'
-    },
-    {
-      id: 'assign',
-      title: '🎯 Assegna Task',
-      description: 'Assegna nuovi task agli utenti',
-      link: '/admin/assign-task',
-      icon: '🎯',
-      color: 'orange',
-      badge: 'Assign'
-    },
-    {
-      id: 'reports',
-      title: '📈 Report',
-      description: 'Genera report e documenti',
-      link: '/admin/reports',
-      icon: '📈',
-      color: 'red',
-      badge: 'Export'
-    },
-    {
-      id: 'activity',
-      title: '📝 Attività Recenti',
-      description: 'Storico delle attività del sistema',
-      link: '/admin/activity',
-      icon: '📝',
-      color: 'cyan',
-      badge: 'Logs'
-    },
-    {
-      id: 'history',
-      title: '📖 Storico Completo',
-      description: 'Archivio storico di tutte le azioni',
-      link: '/admin/history',
-      icon: '📖',
-      color: 'indigo',
-      badge: 'Archive'
-    },
-    {
-      id: 'settings',
-      title: '⚙️ Impostazioni Sistema',
-      description: 'Configura le impostazioni della piattaforma',
-      link: '/admin/settings',
-      icon: '⚙️',
-      color: 'gray',
-      badge: 'Config'
-    },
-    {
-      id: 'trash',
-      title: '🗑️ Cestino Globale',
-      description: 'Gestisci i task eliminati',
-      link: '/admin/trash',
-      icon: '🗑️',
-      color: 'red',
-      badge: deletedTasks.length > 0 ? `${deletedTasks.length}` : 'Empty'
-    },
-  ];
+  {
+    id: 'statistics',
+    title: '📊 Statistiche',
+    description: 'Analisi dettagliate e report',
+    link: '/admin/stats', 
+    icon: '📊',
+    color: 'blue',
+    badge: 'Analytics'
+  },
+  {
+    id: 'users',
+    title: '👥 Gestione Utenti',
+    description: 'Gestisci tutti gli utenti del sistema',
+    link: '/admin/users',
+    icon: '👥',
+    color: 'green',
+    badge: 'Admin'
+  },
+  {
+    id: 'tasks',
+    title: '📋 Gestione Task',
+    description: 'Visualizza e modifica tutti i task',
+    link: '/admin/tasks', 
+    icon: '📋',
+    color: 'purple',
+    badge: 'Manage'
+  },
+  {
+    id: 'assign',
+    title: '🎯 Assegna Task',
+    description: 'Assegna nuovi task agli utenti',
+    link: '/admin/assign-task', 
+    icon: '🎯',
+    color: 'orange',
+    badge: 'Assign'
+  },
+  {
+    id: 'reports',
+    title: '📈 Report',
+    description: 'Genera report e documenti',
+    link: '/admin/reports',
+    icon: '📈',
+    color: 'red',
+    badge: 'Export'
+  },
+  {
+    id: 'activity',
+    title: '📝 Attività Recenti',
+    description: 'Storico delle attività del sistema',
+    link: '/admin/activity',
+    icon: '📝',
+    color: 'cyan',
+    badge: 'Logs'
+  },
+  {
+    id: 'history',
+    title: '📖 Storico Completo',
+    description: 'Archivio storico di tutte le azioni',
+    link: '/admin/history',
+    icon: '📖',
+    color: 'indigo',
+    badge: 'Archive'
+  },
+  {
+    id: 'settings',
+    title: '⚙️ Impostazioni Sistema',
+    description: 'Configura le impostazioni della piattaforma',
+    link: '/admin/settings',
+    icon: '⚙️',
+    color: 'gray',
+    badge: 'Config'
+  },
+  {
+    id: 'trash',
+    title: '🗑️ Cestino Globale',
+    description: 'Gestisci i task eliminati',
+    link: '/admin/trash', 
+    icon: '🗑️',
+    color: 'red',
+    badge: deletedTasks.length > 0 ? `${deletedTasks.length}` : 'Empty'
+  },
+];
 
   // Funzione logout
   const handleLogout = async () => {
@@ -320,8 +357,8 @@ const AdminDashboard = () => {
   const formatDate = useCallback((dateValue) => {
     if (!dateValue) return 'N/D';
     try {
-      const date = dateValue.toDate ?
-        dateValue.toDate() :
+      const date = dateValue.toDate ? 
+        dateValue.toDate() : 
         new Date(dateValue);
       return date.toLocaleDateString('it-IT', {
         day: '2-digit',
@@ -336,8 +373,8 @@ const AdminDashboard = () => {
   const formatDateTime = useCallback((dateValue) => {
     if (!dateValue) return 'N/D';
     try {
-      const date = dateValue.toDate ?
-        dateValue.toDate() :
+      const date = dateValue.toDate ? 
+        dateValue.toDate() : 
         new Date(dateValue);
       return date.toLocaleDateString('it-IT', {
         day: '2-digit',
@@ -354,18 +391,18 @@ const AdminDashboard = () => {
   // Calcola statistiche rapide
   const calculateQuickStats = useCallback((tasksList, usersList) => {
     const now = new Date();
-
+    
     // Task in sospeso (non completati)
-    const pendingTasks = tasksList.filter(t =>
+    const pendingTasks = tasksList.filter(t => 
       t.status !== 'completato' && t.status !== 'bloccato'
     ).length;
-
+    
     // Task urgenti (scadenza entro 3 giorni)
     const urgentTasks = tasksList.filter(task => {
       if (!task.dueDate || task.status === 'completato') return false;
       try {
-        const dueDate = task.dueDate.toDate ?
-          task.dueDate.toDate() :
+        const dueDate = task.dueDate.toDate ? 
+          task.dueDate.toDate() : 
           new Date(task.dueDate);
         const daysDiff = Math.floor((dueDate - now) / (1000 * 60 * 60 * 24));
         return daysDiff <= 3 && daysDiff >= 0;
@@ -378,8 +415,8 @@ const AdminDashboard = () => {
     const recentUsers = usersList.filter(user => {
       if (!user.createdAt) return false;
       try {
-        const createdAt = user.createdAt.toDate ?
-          user.createdAt.toDate() :
+        const createdAt = user.createdAt.toDate ? 
+          user.createdAt.toDate() : 
           new Date(user.createdAt);
         const daysDiff = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
         return daysDiff <= 7;
@@ -396,163 +433,186 @@ const AdminDashboard = () => {
     };
   }, []);
 
-  // 🔄 Funzione per aggiornare i dati
+  // 🔄 Funzione per aggiornare i dati (SENZA LOOP)
   const refreshData = useCallback(async () => {
-    console.log('🔄 [AdminDashboard] Aggiornamento manuale dati...');
-    setRefreshing(true);
-
-    try {
-      // Carica utenti
-      const usersCollection = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersCollection);
-      const usersList = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-
-      // Carica task globali
-      await loadAllTasks();
-
-      // Carica task eliminati globali
-      await loadDeletedTasks('all');
-
-      // Carica attività recenti
-      const activitiesCollection = collection(db, 'activities');
-      const activitiesSnapshot = await getDocs(
-        query(activitiesCollection, orderBy('timestamp', 'desc'), limit(10))
-      );
-      const activitiesList = activitiesSnapshot.docs
-        .map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
-        }));
-
-      // Calcola statistiche dettagliate
-      const stats = calculateStats(tasks, deletedTasks, usersList);
-
-      // Calcola statistiche rapide
-      const quickStatsData = calculateQuickStats(tasks, usersList);
-
-      setDashboardData({
-        users: usersList,
-        activities: activitiesList,
-        stats
-      });
-
-      setQuickStats(quickStatsData);
-      setLastUpdate(new Date());
-
-      console.log('✅ [AdminDashboard] Dati aggiornati con successo');
-    } catch (error) {
-      console.error('❌ [AdminDashboard] Errore aggiornamento:', error);
-      setError(`Errore nell'aggiornamento dei dati: ${error.message}`);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats]);
-
-  // Carica dati completi
-  const loadAllData = useCallback(async () => {
-    if (!db) {
-      setError('Database non disponibile');
-      setLoading(false);
+    // Evita aggiornamenti multipli
+    if (isRefreshing) {
+      console.log('⏳ Aggiornamento già in corso...');
       return;
     }
-
-    setRefreshing(true);
-    setError(null);
+    
+    setIsRefreshing(true);
+    console.log('🔄 [AdminDashboard] Aggiornamento dati...');
+    
     try {
-      console.log('📊 Caricamento dati dashboard admin...');
-
       // Carica utenti
       const usersCollection = collection(db, 'users');
       const usersSnapshot = await getDocs(usersCollection);
-      const usersList = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+      const usersList = usersSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
       }));
-
+      
       // Carica task globali
       await loadAllTasks();
-
+      
       // Carica task eliminati globali
       await loadDeletedTasks('all');
-
+      
       // Carica attività recenti
       const activitiesCollection = collection(db, 'activities');
       const activitiesSnapshot = await getDocs(
         query(activitiesCollection, orderBy('timestamp', 'desc'), limit(10))
       );
       const activitiesList = activitiesSnapshot.docs
-        .map(doc => ({
-          id: doc.id,
+        .map(doc => ({ 
+          id: doc.id, 
           ...doc.data(),
           timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
         }));
-
+      
       // Calcola statistiche dettagliate
       const stats = calculateStats(tasks, deletedTasks, usersList);
-
+      
       // Calcola statistiche rapide
       const quickStatsData = calculateQuickStats(tasks, usersList);
-
+      
       // Carica stato sistema
       const systemStatus = await loadSystemStatus();
-
+      
       setDashboardData({
         users: usersList,
         activities: activitiesList,
         stats,
         systemStatus
       });
-
+      
       setQuickStats(quickStatsData);
       setLastUpdate(new Date());
-
-      console.log('✅ Dati dashboard caricati:', {
-        tasks: tasks.length,
-        deletedTasks: deletedTasks.length,
-        users: usersList.length
-      });
-
+      
+      console.log('✅ [AdminDashboard] Aggiornamento completato');
     } catch (error) {
-      console.error('❌ Errore caricamento dashboard:', error);
-      setError(`Errore nel caricamento dei dati: ${error.message}`);
+      console.error('❌ [AdminDashboard] Errore aggiornamento:', error);
+      setError(`Errore nell'aggiornamento dei dati: ${error.message}`);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setIsRefreshing(false);
     }
-  }, [loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats]);
+  }, [loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats, isRefreshing]);
+
+  // Carica dati iniziali (UNA SOLA VOLTA)
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+
+    let isMounted = true;
+
+    const loadInitialData = async () => {
+      if (!db) {
+        setError('Database non disponibile');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        console.log('📊 Caricamento dati dashboard admin...');
+        
+        // Carica utenti
+        const usersCollection = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersCollection);
+        const usersList = usersSnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data() 
+        }));
+        
+        // Carica task globali
+        await loadAllTasks();
+        
+        // Carica task eliminati globali
+        await loadDeletedTasks('all');
+        
+        // Carica attività recenti
+        const activitiesCollection = collection(db, 'activities');
+        const activitiesSnapshot = await getDocs(
+          query(activitiesCollection, orderBy('timestamp', 'desc'), limit(10))
+        );
+        const activitiesList = activitiesSnapshot.docs
+          .map(doc => ({ 
+            id: doc.id, 
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
+          }));
+        
+        // Calcola statistiche dettagliate
+        const stats = calculateStats(tasks, deletedTasks, usersList);
+        
+        // Calcola statistiche rapide
+        const quickStatsData = calculateQuickStats(tasks, usersList);
+        
+        // Carica stato sistema
+        const systemStatus = await loadSystemStatus();
+        
+        if (isMounted) {
+          setDashboardData({
+            users: usersList,
+            activities: activitiesList,
+            stats,
+            systemStatus
+          });
+          
+          setQuickStats(quickStatsData);
+          setLastUpdate(new Date());
+          setLoading(false);
+        }
+        
+        console.log('✅ Dati dashboard caricati:', {
+          tasks: tasks.length,
+          deletedTasks: deletedTasks.length,
+          users: usersList.length
+        });
+        
+      } catch (error) {
+        console.error('❌ Errore caricamento dashboard:', error);
+        if (isMounted) {
+          setError(`Errore nel caricamento dei dati: ${error.message}`);
+          setLoading(false);
+        }
+      }
+    };
+
+    loadInitialData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user, loadAllTasks, loadDeletedTasks, tasks, deletedTasks, calculateQuickStats]);
 
   // Calcola statistiche dettagliate
   const calculateStats = useCallback((tasksList, deletedList, users) => {
     const now = new Date();
-
+    
     // Task attivi
     const completedTasks = tasksList.filter(t => t.status === 'completato').length;
-    const activeTasks = tasksList.filter(t =>
+    const activeTasks = tasksList.filter(t => 
       t.status === 'in corso' || t.status === 'assegnato'
     ).length;
-
+    
     const overdueTasks = tasksList.filter(task => {
       if (!task.dueDate || task.status === 'completato') return false;
       try {
-        const dueDate = task.dueDate.toDate ?
-          task.dueDate.toDate() :
+        const dueDate = task.dueDate.toDate ? 
+          task.dueDate.toDate() : 
           new Date(task.dueDate);
         return dueDate < now;
       } catch {
         return false;
       }
     }).length;
-
-    const highPriorityTasks = tasksList.filter(t =>
+    
+    const highPriorityTasks = tasksList.filter(t => 
       t.priority === 'alta' || t.priority === 'critica'
     ).length;
-
-    const completionRate = tasksList.length > 0
-      ? Math.round((completedTasks / tasksList.length) * 100)
+    
+    const completionRate = tasksList.length > 0 
+      ? Math.round((completedTasks / tasksList.length) * 100) 
       : 0;
 
     // Task eliminati
@@ -560,8 +620,8 @@ const AdminDashboard = () => {
     const deletedToday = deletedList.filter(item => {
       if (!item.deletedAt) return false;
       try {
-        const deletedDate = item.deletedAt.toDate ?
-          item.deletedAt.toDate() :
+        const deletedDate = item.deletedAt.toDate ? 
+          item.deletedAt.toDate() : 
           new Date(item.deletedAt);
         return deletedDate.toDateString() === today.toDateString();
       } catch {
@@ -573,7 +633,7 @@ const AdminDashboard = () => {
       // Utenti
       totalUsers: users.length,
       activeUsers: users.filter(u => u.status === 'active').length,
-
+      
       // Task attivi
       totalTasks: tasksList.length,
       completedTasks,
@@ -581,11 +641,11 @@ const AdminDashboard = () => {
       overdueTasks,
       highPriorityTasks,
       completionRate,
-
+      
       // Task eliminati
       totalDeleted: deletedList.length,
       deletedToday,
-
+      
       // Sistema
       systemHealth: 95,
       performance: 98,
@@ -596,7 +656,6 @@ const AdminDashboard = () => {
   // Carica stato sistema
   const loadSystemStatus = async () => {
     try {
-      // Simula controllo stato sistema
       return {
         database: { status: 'online', latency: 45 },
         server: { status: 'healthy', load: 65 },
@@ -614,29 +673,31 @@ const AdminDashboard = () => {
   };
 
   // Task recenti (ultimi 5)
-  const recentTasks = useMemo(() =>
-    tasks.slice(0, 5),
+  const recentTasks = useMemo(() => 
+    tasks.slice(0, 5), 
     [tasks]
   );
 
   // Task eliminati recenti (ultimi 3)
-  const recentDeleted = useMemo(() =>
-    deletedTasks.slice(0, 3),
+  const recentDeleted = useMemo(() => 
+    deletedTasks.slice(0, 3), 
     [deletedTasks]
   );
 
   // Funzioni per il cestino
   const handleEmptyTrash = async () => {
     if (deletedTasks.length === 0) return;
-
+    
     if (!window.confirm(`Sei sicuro di voler svuotare il cestino globale? ${deletedTasks.length} task verranno eliminati definitivamente. Questa azione è irreversibile.`)) {
       return;
     }
-
+    
     try {
       await emptyTrash('all');
       alert('✅ Cestino globale svuotato con successo!');
-      loadAllData();
+      
+      // Ricarica i dati
+      await refreshData();
     } catch (error) {
       console.error('❌ Errore svuotamento cestino:', error);
       setError('❌ Errore durante lo svuotamento del cestino');
@@ -647,7 +708,9 @@ const AdminDashboard = () => {
     try {
       await restoreTask(taskId);
       alert('✅ Task ripristinato con successo!');
-      loadAllData();
+      
+      // Ricarica i dati
+      await refreshData();
     } catch (error) {
       console.error('❌ Errore ripristino task:', error);
       setError('❌ Errore nel ripristino del task');
@@ -656,31 +719,18 @@ const AdminDashboard = () => {
 
   const handleDeletePermanently = async (taskId) => {
     if (!window.confirm('Sei sicuro di voler eliminare definitivamente questo task?')) return;
-
+    
     try {
       await deletePermanently(taskId);
       alert('✅ Task eliminato definitivamente!');
-      loadAllData();
+      
+      // Ricarica i dati
+      await refreshData();
     } catch (error) {
       console.error('❌ Errore eliminazione permanente:', error);
       setError('❌ Errore nell\'eliminazione del task');
     }
   };
-
-  useEffect(() => {
-    if (user && user.role === 'admin') {
-      loadAllData();
-
-      // Refresh automatico ogni 60 secondi
-      const interval = setInterval(() => {
-        if (!refreshing) {
-          loadAllData();
-        }
-      }, 60000);
-
-      return () => clearInterval(interval);
-    }
-  }, [user, loadAllData, refreshing]);
 
   // Loading State
   if (loading && tasks.length === 0) {
@@ -727,11 +777,11 @@ const AdminDashboard = () => {
               Gestione completa del sistema • Ultimo aggiornamento: {lastUpdate ? formatDateTime(lastUpdate) : 'N/D'}
             </p>
           </div>
-
+          
           <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* ⏱️ TIMER VISIBILE - Aggiunto qui */}
+            {/* ⏱️ TIMER FISSATO */}
             <AutoUpdateTimer lastUpdate={lastUpdate} onRefresh={refreshData} />
-
+            
             <button
               onClick={() => navigate('/admin/trash')}
               className="btn-trash"
@@ -792,7 +842,7 @@ const AdminDashboard = () => {
               </div>
             </div>
           </div>
-
+          
           <div className="stat-card green">
             <div className="stat-icon">✅</div>
             <div className="stat-content">
@@ -803,7 +853,7 @@ const AdminDashboard = () => {
               </div>
             </div>
           </div>
-
+          
           <div className="stat-card orange">
             <div className="stat-icon">⚠️</div>
             <div className="stat-content">
@@ -814,7 +864,7 @@ const AdminDashboard = () => {
               </div>
             </div>
           </div>
-
+          
           <div className="stat-card red">
             <div className="stat-icon">🗑️</div>
             <div className="stat-content">
@@ -840,7 +890,7 @@ const AdminDashboard = () => {
           <div className="card-content">
             <div className="quick-actions-grid">
               {quickActions.map((action) => (
-                <Link
+                <Link 
                   key={action.id}
                   to={action.link}
                   className={`quick-action-card ${action.color}`}
@@ -942,8 +992,8 @@ const AdminDashboard = () => {
                           {(() => {
                             if (!item.deletedAt) return 'N/D';
                             try {
-                              const deleted = item.deletedAt.toDate ?
-                                item.deletedAt.toDate() :
+                              const deleted = item.deletedAt.toDate ? 
+                                item.deletedAt.toDate() : 
                                 new Date(item.deletedAt);
                               const now = new Date();
                               const days = Math.floor((now - deleted) / (1000 * 60 * 60 * 24));
@@ -1037,7 +1087,7 @@ const AdminDashboard = () => {
                   {quickStats.urgentTasks} task
                 </span>
                 <div className="health-bar">
-                  <div className="health-fill" style={{
+                  <div className="health-fill" style={{ 
                     width: `${Math.min(100, quickStats.urgentTasks * 20)}%`,
                     background: 'linear-gradient(90deg, #ef4444 0%, #dc2626 100%)'
                   }}></div>
@@ -1080,14 +1130,9 @@ const AdminDashboard = () => {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
-        
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.1); opacity: 0.8; }
-        }
       `}</style>
     </div>
   );
 };
 
-export default AdminDashboard;  
+export default AdminDashboard;
