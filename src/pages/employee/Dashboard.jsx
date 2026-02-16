@@ -56,28 +56,135 @@ const getStatusColor = (status) => {
   return colors[status] || '#6b7280';
 };
 
+// ⏱️ COMPONENTE TIMER PER IL DASHBOARD
+const AutoUpdateTimer = ({ lastUpdate, onRefresh }) => {
+  const [timeToNextUpdate, setTimeToNextUpdate] = useState(300); // 5 minuti in secondi
+  const UPDATE_INTERVAL = 300; // 5 minuti
+
+  // Timer countdown
+  useEffect(() => {
+    const timerId = setInterval(() => {
+      setTimeToNextUpdate(prev => {
+        if (prev <= 1) {
+          // Quando arriva a 0, fa l'aggiornamento
+          onRefresh();
+          return UPDATE_INTERVAL;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerId);
+  }, [onRefresh]);
+
+  // Formatta il timer in mm:ss
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '8px 16px',
+      backgroundColor: '#e0f2fe',
+      borderRadius: '30px',
+      border: '1px solid #7dd3fc',
+      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.1)'
+    }}>
+      {/* Icona timer animata */}
+      <div style={{
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        backgroundColor: '#0369a1',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'white',
+        fontSize: '16px',
+        animation: 'pulse 2s infinite'
+      }}>
+        ⏱️
+      </div>
+
+      {/* Informazioni timer */}
+      <div>
+        <div style={{
+          fontSize: '12px',
+          color: '#0369a1',
+          fontWeight: '600',
+          marginBottom: '2px'
+        }}>
+          PROSSIMO AGGIORNAMENTO
+        </div>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <span style={{
+            fontSize: '20px',
+            fontWeight: '700',
+            color: '#0c4a6e',
+            fontFamily: 'monospace'
+          }}>
+            {formatTimer(timeToNextUpdate)}
+          </span>
+          <button
+            onClick={onRefresh}
+            style={{
+              padding: '4px 12px',
+              backgroundColor: '#0369a1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#0284c7';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = '#0369a1';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <span>🔄</span>
+            Aggiorna ora
+          </button>
+        </div>
+      </div>
+
+      {/* Ultimo aggiornamento */}
+      <div style={{
+        fontSize: '11px',
+        color: '#0369a1',
+        borderLeft: '1px solid #7dd3fc',
+        paddingLeft: '12px',
+        marginLeft: '4px'
+      }}>
+        <div>Ultimo</div>
+        <div style={{ fontWeight: '600' }}>
+          {lastUpdate.toLocaleTimeString()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const EmployeeDashboard = () => {
-  // ✅ UNA SOLA DICHIARAZIONE
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-
-  // 🔴 DEBUG DIRETTO - Mostra esattamente cosa arriva
-  console.log('========== DEBUG UTENTE ==========');
-  console.log('user object:', user);
-  console.log('user.role:', user?.role);
-  console.log('user.role type:', typeof user?.role);
-  console.log('user.role lowercase:', user?.role?.toLowerCase());
-  console.log('isEmployee check:', user?.role === 'dipendente');
-  console.log('isEmployee check 2:', user?.role === 'employee');
-  console.log('===================================');
-
-  // Se il ruolo non è riconosciuto, mostra un alert
-  useEffect(() => {
-    if (user && user.role !== 'dipendente' && user.role !== 'employee') {
-      alert(`RUOLO SCONOSCIUTO: "${user.role}"`);
-    }
-  }, [user]);
-
   const { tasks, loading: tasksLoading, loadAllTasks, updateTask } = useTasks();
   const { loadUserStats } = useStats();
 
@@ -86,6 +193,18 @@ const EmployeeDashboard = () => {
   const [selectedStatus, setSelectedStatus] = useState('tutti');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [viewMode, setViewMode] = useState('all'); // 'all' o 'mine'
+  const [lastUpdate, setLastUpdate] = useState(new Date());
+
+  // 🔄 Funzione per aggiornare i dati
+  const refreshData = async () => {
+    if (!user?.uid) return;
+
+    console.log('🔄 [Dashboard] Aggiornamento manuale dati...');
+    await loadAllTasks();
+    const stats = await loadUserStats(user.uid);
+    setUserStats(stats);
+    setLastUpdate(new Date());
+  };
 
   // Aggiorna l'ora ogni minuto
   useEffect(() => {
@@ -93,30 +212,28 @@ const EmployeeDashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // MODIFICA 1: Carica TUTTI i task (non solo quelli dell'utente)
+  // Carica dati iniziali
   useEffect(() => {
     const loadUserData = async () => {
       if (!user?.uid) return;
 
       try {
-        console.log('📊 [EmployeeDashboard] Caricamento TUTTI i task...');
+        console.log('📊 [Dashboard] Caricamento dati...');
         await loadAllTasks();
-
-        // Le statistiche rimangono solo per l'utente corrente
         const stats = await loadUserStats(user.uid);
         setUserStats(stats);
+        setLastUpdate(new Date());
       } catch (error) {
-        console.error('❌ [EmployeeDashboard] Errore caricamento dati:', error);
+        console.error('❌ [Dashboard] Errore caricamento dati:', error);
       } finally {
         setLoading(false);
-        console.log('✅ [EmployeeDashboard] Dati caricati - Task totali:', tasks.length);
       }
     };
 
     loadUserData();
-  }, [user]);
+  }, [user?.uid]);
 
-  // MODIFICA 2: Funzione per verificare se l'utente può modificare il task
+  // Funzione per verificare se l'utente può modificare il task
   const canModifyTask = (task) => {
     return task.assignedTo === user?.uid;
   };
@@ -159,7 +276,7 @@ const EmployeeDashboard = () => {
     };
   }, [tasks, user?.uid]);
 
-  // MODIFICA 3: Task filtrati per status E modalità vista
+  // Task filtrati per status E modalità vista
   const filteredTasks = useMemo(() => {
     // Prima filtra per modalità vista
     let filtered = viewMode === 'mine'
@@ -284,6 +401,9 @@ const EmployeeDashboard = () => {
             </p>
           </div>
         </div>
+
+        {/* ⏱️ TIMER VISIBILE - Aggiunto qui */}
+        <AutoUpdateTimer lastUpdate={lastUpdate} onRefresh={refreshData} />
 
         <div style={{ display: 'flex', gap: '12px' }}>
           <button
@@ -492,7 +612,7 @@ const EmployeeDashboard = () => {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '30px' }}>
           {/* Colonna Sinistra: Task e Attività */}
           <div>
-            {/* MODIFICA 4: Toggle Vista e Filtri Status */}
+            {/* Toggle Vista e Filtri Status */}
             <div style={{
               backgroundColor: 'white',
               padding: '20px',
@@ -670,7 +790,7 @@ const EmployeeDashboard = () => {
                           opacity: isOwnTask ? 1 : 0.9
                         }}
                       >
-                        {/* MODIFICA 5: Badge proprietario */}
+                        {/* Badge proprietario */}
                         <div style={{
                           position: 'absolute',
                           top: '20px',
@@ -801,7 +921,7 @@ const EmployeeDashboard = () => {
                           </div>
                         </div>
 
-                        {/* MODIFICA 6: Progresso e Azioni - disabilitati se non è suo */}
+                        {/* Progresso e Azioni - disabilitati se non è suo */}
                         <div style={{
                           display: 'flex',
                           justifyContent: 'space-between',
@@ -1178,11 +1298,16 @@ const EmployeeDashboard = () => {
         </div>
       </div>
 
-      {/* Stile per animazione spin */}
+      {/* Stile per animazioni */}
       <style>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.8; }
         }
       `}</style>
     </div>
